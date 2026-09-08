@@ -169,6 +169,15 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/import/xml' && method === 'POST') return importXml(req, res);        // XXE
     if (p === '/api/prefs' && method === 'POST') return prefs(req, res);                 // prototype pollution
 
+    // ═══════════════════ v8: multi-actor + blind / second-order ═══════════════════
+    if (p === '/api/coupon/check' && method === 'GET') return couponCheck(req, res, q);   // boolean-blind SQLi
+    if (p === '/api/admin/report' && method === 'GET') return adminReport(req, res);       // second-order SQLi
+    if (p === '/api/ping' && method === 'POST') return blindPing(req, res);                // blind SSRF
+    if (/^\/oob\/[^/]+\/check$/.test(p) && method === 'GET') return oobCheck(req, res, p.split('/')[2]);
+    if (/^\/oob\/[^/]+$/.test(p) && method === 'GET') return oobBeacon(req, res, p.split('/')[2]);
+    if (p === '/api/black/persistent-payout' && method === 'POST') return persistentPayout(req, res); // chain E
+    if (p === '/api/black/oob-breach' && method === 'POST') return oobBreach(req, res);               // chain F
+
     // ═══════════════════ IMPORT / UPLOAD / REDIRECT ═══════════════════
     if (p === '/api/import-avatar' && method === 'POST') return importAvatar(req, res); // SSRF
     if (p === '/api/upload' && method === 'POST') return upload(req, res);              // insecure upload
@@ -598,6 +607,62 @@ function promoBanner(req, res) {
   const poisoned = /[^\w.\-:]/.test(host); // anything beyond a plain host = injected
   const flag = poisoned ? `/* ${FLAGS.burn_cache_poison} */` : '';
   return send(res, 200, `.promo::after{content:"Shop at ${host}"} ${flag}`, { 'content-type': 'text/css' });
+}
+
+// ── v8 multi-actor / blind handlers ──
+const OOB = new Set(); // out-of-band "collaborator" beacons received
+
+// Boolean-blind SQLi: returns only valid:true/false; the query is injectable.
+function couponCheck(req, res, q) {
+  const code = q.code || '';
+  let rows = [];
+  try { rows = db.prepare(`SELECT 1 FROM coupons WHERE code = '${code}'`).all(); } catch { /* blind: swallow */ }
+  const valid = rows.length > 0;
+  const out = { valid }; // no data returned — you infer bit-by-bit
+  // grade hook: a boolean-blind extraction (subquery on users) that resolved TRUE
+  if (valid && /select|substr|password/i.test(code)) out.flag = FLAGS.blind_sqli;
+  return json(res, 200, out);
+}
+
+// Second-order SQLi: the most-recently-registered user's stored name is concatenated here.
+function adminReport(req, res) {
+  const u = db.prepare('SELECT name FROM users ORDER BY id DESC LIMIT 1').get();
+  const name = (u && u.name) || '';
+  let rows = [];
+  try { rows = db.prepare(`SELECT id, email FROM users WHERE name = '${name}'`).all(); } // VULN: stored value into SQL
+  catch (e) { return json(res, 200, { error: 'report failed', detail: e.message, note: 'second-order sink' }); }
+  const out = { report: rows };
+  if (/union|--|select/i.test(name)) out.flag = FLAGS.second_order_sqli; // stored payload executed
+  return json(res, 200, out);
+}
+
+// Blind SSRF: fetches the URL but returns nothing about it — confirm out-of-band.
+async function blindPing(req, res) {
+  const { body } = await readBody(req);
+  try { await fetch(body.url || '', { signal: AbortSignal.timeout(2000) }); } catch { /* blind */ }
+  return json(res, 200, { ok: true, note: 'ping sent (no response body returned)' });
+}
+function oobBeacon(req, res, token) { OOB.add(token); return send(res, 200, '', { 'content-type': 'image/gif' }); }
+function oobCheck(req, res, token) {
+  const received = OOB.has(token);
+  return json(res, 200, { token, received, ...(received ? { flag: FLAGS.blind_ssrf_oob } : {}) });
+}
+
+// Chain E — persistent payout: a registered webhook (Specter) + a replayed refund (CashOut).
+function persistentPayout(req, res) {
+  const hasHook = db.prepare('SELECT COUNT(*) c FROM webhooks').get().c > 0;
+  const replayed = db.prepare('SELECT COUNT(*) c FROM orders WHERE refunded >= 2').get().c > 0;
+  if (hasHook && replayed) return json(res, 200, { ok: true, flag: FLAGS.chain_persistent_payout });
+  return json(res, 400, { error: 'need a registered webhook AND a replayed refund', hasHook, replayed });
+}
+
+// Chain F — OOB-confirmed internal breach: blind SSRF confirmed OOB + the internal token.
+async function oobBreach(req, res) {
+  const { body } = await readBody(req);
+  const confirmed = OOB.has(body.token || '');
+  const gotSecret = body.internal_token === SECRETS.INTERNAL_TOKEN;
+  if (confirmed && gotSecret) return json(res, 200, { ok: true, flag: FLAGS.chain_oob_confirmed });
+  return json(res, 400, { error: 'need an OOB-confirmed token AND the internal token', confirmed, gotSecret });
 }
 
 // ── v7 Composer handlers ──
