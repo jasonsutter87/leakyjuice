@@ -12,6 +12,7 @@ import { getDb, seed, SECRETS, RSA, FLAGS } from './lib/db.js';
 import { initKeys, sign, verify, verifyMeta, verifyJku } from './lib/jwt.js';
 import { executeGraphQL } from './lib/graphql.js';
 import { askJuicy } from './lib/juicy.js';
+import * as scoreboard from './lib/scoreboard.js';
 import {
   json, html, text, redirect, send, readBody, parseCookies, serveStatic
 } from './lib/util.js';
@@ -91,6 +92,14 @@ const server = http.createServer(async (req, res) => {
     if (method === 'OPTIONS') { res.setHeader('access-control-allow-headers', '*'); return send(res, 204, ''); }
   }
 
+  // v12: the honest source of truth — record every FLAG the server emits to this player.
+  // (An X-Player header identifies the terminal user; the scoreboard verify() uses this.)
+  const player = req.headers['x-player'];
+  if (player) {
+    const realEnd0 = res.end.bind(res);
+    res.end = (body) => { try { scoreboard.observe(String(player), typeof body === 'string' ? body : (body ? body.toString() : '')); } catch {} return realEnd0(body); };
+  }
+
   // web-cache deception: serve from cache if we have it for this static-looking path
   if (method === 'GET' && CACHEABLE.test(p) && CACHE.has(p)) {
     const c = CACHE.get(p);
@@ -113,6 +122,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/__reset' && method === 'POST') {
       boot(); CACHE.clear(); OOB.clear(); AUDIT.length = 0;
       OTP_ATTEMPTS.total = 0; OTP_ATTEMPTS.perIp.clear();
+      scoreboard.resetScores();
       return json(res, 200, { ok: true, reseeded: true });
     }
     if (p === '/health') return json(res, 200, { ok: true, app: 'leakyjuice' });
@@ -231,6 +241,13 @@ const server = http.createServer(async (req, res) => {
     // ═══════════════════ STATIC + SPA ═══════════════════
     if (p === '/app.js.map') return sourcemap(req, res);
     if (p === '/' || p === '/index.html') return serveStatic(res, PUBLIC, '/index.html');
+    // ═══════════════════ v12: Hack the Scoreboard ═══════════════════
+    if (p === '/api/score' && method === 'GET') return json(res, 200, { leaderboard: scoreboard.leaderboard(), total: Object.keys(FLAGS).filter((k) => FLAGS[k]).length });
+    if (p === '/api/score/set' && method === 'POST') return scoreSet(req, res);
+    if (p === '/api/score/claim' && method === 'POST') return scoreClaim(req, res);
+    if (p === '/api/score/verify' && method === 'GET') return json(res, 200, scoreboard.verify(q.player || req.headers['x-player'] || ''));
+    if (p === '/leaderboard' && method === 'GET') return leaderboardPage(req, res);
+
     return serveStatic(res, PUBLIC, p);
   } catch (e) {
     // VULN: verbose errors leak stack traces (#7)
@@ -946,6 +963,33 @@ async function graphql(req, res, q) {
   };
   const result = executeGraphQL(query || '', db, ctx);
   return json(res, 200, result);
+}
+
+// ── v12 scoreboard handlers ──
+async function scoreSet(req, res) {
+  const { body } = await readBody(req);
+  const actor = req.headers['x-player'] || body.player;
+  const r = scoreboard.setScore({ player: body.player || actor, name: body.name, score: body.score });
+  // IDOR: wrote a row that isn't yours
+  if (body.player && actor && body.player !== actor) r.flag_idor = FLAGS.scoreboard_idor;
+  return json(res, 200, r);
+}
+async function scoreClaim(req, res) {
+  const { body } = await readBody(req);
+  const actor = req.headers['x-player'] || body.player;
+  const r = scoreboard.claimFlag({ player: body.player || actor, name: body.name, flag: body.flag, actor });
+  return json(res, 200, r);
+}
+function leaderboardPage(req, res) {
+  // VULN: player names rendered raw → stored XSS on the leaderboard.
+  const rows = scoreboard.leaderboardRaw()
+    .sort((a, b) => b.score - a.score)
+    .map((b) => `<tr><td>${b.name}</td><td>${b.score}</td></tr>`).join('');
+  return html(res, 200, `<!doctype html><meta charset=utf-8><title>Leaderboard</title>
+<link rel=stylesheet href=/styles.css><body class=plain>
+<h1>🏆 LeakyJuice CTF — Leaderboard</h1>
+<table><tr><th>Player</th><th>Score</th></tr>${rows || '<tr><td colspan=2>No players yet.</td></tr>'}</table>
+<p class=muted>Scores are self-reported. What could go wrong?</p></body>`);
 }
 
 // Ask Juicy — deterministic injectable assistant (?hardened=1 for the honest-abstain twin)

