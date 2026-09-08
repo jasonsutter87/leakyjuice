@@ -11,8 +11,8 @@ the kind of composition that actually earns money on HackerOne.
 This is a **planning doc**. It over-lists what's *possible* (~40 bugs + named chains) so we
 can cherry-pick what to build.
 
-> **Status:** ✅ **v1–v11 shipped** — 71 single-shot bugs + 7 chains + Black-Team master flag, self-grading **75/75**
-> (`npm start`, then `node grade.mjs`). Zero dependencies, self-contained `node:sqlite`.
+> **Status:** ✅ **v1–v11 shipped** — 66 numbered challenges + 6 chains + a Black-Team master flag,
+> self-grading **75/75** (`npm start`, then `node grade.mjs`). Zero dependencies, self-contained `node:sqlite`.
 
 ---
 

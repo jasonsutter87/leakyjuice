@@ -9,12 +9,16 @@ real HackerOne loop: fire a request, read the response, escalate.
 
 - **Zero dependencies.** Node built-ins only (`http`, `crypto`, `node:sqlite`). No
   `npm install`, no external database, fully offline.
-- **30 documented vulnerabilities** across 3 tiers (beginner → Mr-BlackKeys), including
-  the post-2020 classes the sibling apps skip: BOLA/BFLA, JWT **algorithm confusion**,
-  GraphQL introspection/field-authz/batching, CORS reflection, OAuth `redirect_uri`,
-  and web-cache deception.
+- **66 documented vulnerabilities + 6 chains + a Black-Team master flag** — a graded
+  ladder (v1–v11) themed by threat actor: beginner single-shots → **Mr-BlackKeys** chains →
+  **Ask Juicy** (LLM), **CashOut** (money), **Specter** (persistence), **Burn1t** (DoS),
+  **Composer** (supply-chain), crypto & API bosses → the final boss `FLAG{lj_black_team}`.
+  Post-2020 classes the siblings skip: BOLA/BFLA, JWT algorithm-confusion / `jku` injection,
+  GraphQL introspection/field-authz/batching/mass-assignment, CORS, OAuth PKCE, web-cache
+  deception, dependency confusion, prototype pollution, LLM prompt injection, and more.
 - **Machine-gradeable.** Every exploit drops a `FLAG{lj_…}`; `answers.json` is the
-  manifest and `grade.mjs` is a runnable self-grader.
+  manifest and `grade.mjs` is a runnable self-grader (expect **75/75**). Plus deliberate
+  **honest-abstain traps** that must NOT yield a flag.
 
 ## Run
 
@@ -36,7 +40,7 @@ Seeded accounts:
 
 ```bash
 npm start          # in one terminal
-node grade.mjs     # in another → fires every exploit, tallies flags (expect 30/30)
+node grade.mjs     # in another → fires every exploit, tallies flags (expect 75/75)
 ```
 
 `POST /__reset` (or `npm run reset`) re-seeds to a clean state between runs.
