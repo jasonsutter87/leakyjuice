@@ -2,6 +2,7 @@
 data/
 lib/keys/
 node_modules/
+dist/
 
 # ── JuicySec internal reports — CONFIDENTIAL, must NOT ship in the repo ──
 # (added after the reports were committed by mistake — see JS-2026-00)

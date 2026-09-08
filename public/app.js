@@ -161,7 +161,7 @@ async function renderAccount(){
         <button class="btn" onclick="doLogin()">Sign in</button>
         <button class="btn ghost" onclick="doRegister()">Create account</button>
         <p id="authMsg" class="muted"></p>
-        <p class="muted" style="font-size:13px">Test accounts are seeded on first run — see <code>VULNS.md</code>.</p>
+        <p class="muted" style="font-size:13px">A few demo accounts are seeded on first run. The rest is up to you.</p>
       </div></section>`;
     return;
   }
@@ -200,9 +200,9 @@ function renderChallenges(){
   ];
   app.innerHTML = `<section class="section">
     <h1>Challenges</h1>
-    <p class="muted">This shop leaks on purpose. Every screen has something planted in it. The full answer key lives in <code>VULNS.md</code>; machine-gradeable flags in <code>answers.json</code>.</p>
+    <p class="muted">This shop leaks on purpose. Every screen has something planted in it. No map is provided — investigate, form a hypothesis, prove it. Every confirmed bug drops a <code>FLAG{lj_…}</code>.</p>
     <div class="grid">${classes.map(c=>`<div class="card"><div class="tag">${c[0]}</div><h3 style="font-size:17px;margin-top:8px">${c[1]}</h3></div>`).join('')}</div>
-    <div class="notice" style="margin-top:20px">Beginners: start at the auth form and the product pages. Pros: the good stuff is the <b>chains</b> — see <code>BLUEPRINT.md</code>.</div>
+    <div class="notice" style="margin-top:20px">Beginners: start at the auth form and the product pages. Pros: the good stuff is the <b>chains</b> — where no single bug is critical but the composition is.</div>
   </section>`;
 }
 

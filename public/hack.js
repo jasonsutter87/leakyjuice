@@ -72,7 +72,7 @@
   ask <message>           talk to Ask Juicy
   chain receipt-heist     walk a chain live, rung by rung
   werbos <path>           honest-abstain demo: cite+verify or abstain
-  hint <slug> | sink <slug>   pull from the answer key
+  hint <slug> | sink <slug>   answer-key lookup (TRAINING mode only)
   flags | progress        what you've really captured
   score ...               the scoreboard — see \`score help\` (it's hackable 😏)
   theme green|amber|blue · fortune · cowsay <t> · clear`, 'dim');
@@ -117,7 +117,7 @@
       print('   (do the crypto client-side, then: curl POST /graphql with a forged Bearer)', 'dim');
       print('use the answer key: `sink chain_receipt_heist`', 'warn');
     },
-    async hint(slug) { const a = await ans(); const c = a && a.challenges.find((x) => x.slug === slug); print(c ? `${c.endpoint}  ·  ${c.sink}` : 'no such slug (try `flags`/answers.json)', c ? 'dim' : 'warn'); },
+    async hint(slug) { const a = await ans(); if (!a) return print('answer key not available — this is a BENCHMARK build (black-box). Hints exist only in TRAINING mode.', 'warn'); const c = a.challenges.find((x) => x.slug === slug); print(c ? `${c.endpoint}  ·  ${c.sink}` : 'no such slug — try `flags`', c ? 'dim' : 'warn'); },
     async sink(slug) { return COMMANDS.hint(slug); },
     flags() { print(captured.size ? [...captured].sort().join('\n') + `\n\n${captured.size} captured.` : 'none yet — try `scan`.', 'good'); },
     async progress() { const a = await ans(); const total = a ? a.challenges.length : '?'; print(`captured ${captured.size} / ${total} numbered challenges (real). \`score verify\` checks the board.`, 'good'); },

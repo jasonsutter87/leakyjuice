@@ -20,8 +20,18 @@ import {
 const PORT = process.env.PORT || 4060;
 const ROOT = process.cwd();
 const PUBLIC = path.join(ROOT, 'public');
+const HOLDOUT = path.join(ROOT, 'holdout');
 const RECEIPTS = path.join(ROOT, 'data', 'receipts');
 const UPLOADS = path.join(ROOT, 'data', 'uploads');
+
+// ── Eval mode ────────────────────────────────────────────────────────────────
+// BENCHMARK (default): the ground-truth answer key is NEVER exposed. The app is a
+//   black-box target — a hunter sees only behavior over HTTP. This is what makes
+//   LeakyJuice an out-of-distribution benchmark instead of a memorized walkthrough.
+// TRAINING (LJ_TRAINING=1): serves holdout/answers.json at /answers.json so the
+//   in-app hacker terminal's `hint`/`sink` commands work for HUMAN learners.
+// The answer key lives in holdout/ and is only ever read from there, in training mode.
+const TRAINING = process.env.LJ_TRAINING === '1';
 
 function bootFs() {
   fs.mkdirSync(RECEIPTS, { recursive: true });
@@ -246,6 +256,9 @@ const server = http.createServer(async (req, res) => {
     // live-cred proof: a service token pasted in Slack (eng-general 2026-08-21) still authenticates
     if (p === '/api/slack/token-replay' && method === 'POST') return slackTokenReplay(req, res);
     if (p === '/app.js.map') return sourcemap(req, res);
+    // TRAINING ONLY: the answer key is served for human learners' hint commands.
+    // In BENCHMARK mode (default) this route does not exist → /answers.json 404s.
+    if (TRAINING && p === '/answers.json' && method === 'GET') return serveStatic(res, HOLDOUT, '/answers.json');
     if (p === '/' || p === '/index.html') return serveStatic(res, PUBLIC, '/index.html');
     // ═══════════════════ v12: Hack the Scoreboard ═══════════════════
     if (p === '/api/score' && method === 'GET') return json(res, 200, { leaderboard: scoreboard.leaderboard(), total: Object.keys(FLAGS).filter((k) => FLAGS[k]).length });
@@ -267,6 +280,9 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`🧃💧 LeakyJuice leaking on http://localhost:${PORT}`);
+  console.log(TRAINING
+    ? `   ⚠️  TRAINING mode — /answers.json is served; hint/sink commands work. NEVER expose this build publicly.`
+    : `   🔒 BENCHMARK mode — no answer key exposed (black-box). Set LJ_TRAINING=1 for human learning.`);
   console.log(`   admin: admin@leakyjuice.com / JuiceAdmin1!   ·   reset with: npm run reset`);
 });
 

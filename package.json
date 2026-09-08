@@ -6,6 +6,9 @@
   "private": true,
   "scripts": {
     "start": "node --experimental-sqlite --no-warnings server.js",
+    "start:training": "LJ_TRAINING=1 node --experimental-sqlite --no-warnings server.js",
+    "grade": "node holdout/grade.mjs",
+    "build:target": "node scripts/build-target.mjs",
     "reset": "curl -s -X POST http://localhost:4060/__reset && echo"
   },
   "engines": {
