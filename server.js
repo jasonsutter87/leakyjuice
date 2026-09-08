@@ -7,8 +7,9 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
+import crypto from 'node:crypto';
 import { getDb, seed, SECRETS, RSA, FLAGS } from './lib/db.js';
-import { initKeys, sign, verify, verifyMeta } from './lib/jwt.js';
+import { initKeys, sign, verify, verifyMeta, verifyJku } from './lib/jwt.js';
 import { executeGraphQL } from './lib/graphql.js';
 import { askJuicy } from './lib/juicy.js';
 import {
@@ -203,6 +204,12 @@ const server = http.createServer(async (req, res) => {
 
     // ═══════════════════ OAUTH (redirect_uri flaw) ═══════════════════
     if (p === '/oauth/authorize' && method === 'GET') return oauthAuthorize(req, res, q);
+
+    // ═══════════════════ v9: crypto boss ═══════════════════
+    if (p === '/oauth/token' && method === 'POST') return oauthToken(req, res);        // PKCE downgrade + state fixation
+    if (p === '/api/session/jku' && method === 'GET') return sessionJku(req, res);     // jku injection
+    if (p === '/api/sign' && method === 'POST') return signOracle(req, res);           // signing oracle
+    if (p === '/api/seal' && method === 'POST') return seal(req, res);                 // AES-ECB pattern leak
 
     // ═══════════════════ WEB-CACHE-DECEPTION ROUTE ═══════════════════
     // /account/profile serves the authed profile; /account/profile.css routes here too.
@@ -607,6 +614,51 @@ function promoBanner(req, res) {
   const poisoned = /[^\w.\-:]/.test(host); // anything beyond a plain host = injected
   const flag = poisoned ? `/* ${FLAGS.burn_cache_poison} */` : '';
   return send(res, 200, `.promo::after{content:"Shop at ${host}"} ${flag}`, { 'content-type': 'text/css' });
+}
+
+// ── v9 crypto handlers ──
+
+// OAuth token exchange: PKCE downgrade (no code_verifier required) + state not bound.
+async function oauthToken(req, res) {
+  const { body } = await readBody(req);
+  const flags = [];
+  if (!body.code_verifier) flags.push(FLAGS.oauth_pkce);   // VULN: accepts code without PKCE proof
+  if (body.state) flags.push(FLAGS.oauth_state);            // VULN: echoes/accepts unbound state
+  const token = sign({ uid: 2, role: 'customer', email: 'oauth@leakyjuice.com' });
+  return json(res, 200, { access_token: token, token_type: 'Bearer', state: body.state, ...(flags.length ? { flags } : {}) });
+}
+
+// JWT jku injection — verifies via an attacker-hosted JWKS URL.
+async function sessionJku(req, res) {
+  const h = req.headers.authorization || '';
+  if (!h.startsWith('Bearer ')) return json(res, 401, { error: 'send a Bearer token' });
+  const m = await verifyJku(h.slice(7));
+  if (!m) return json(res, 401, { error: 'invalid (jku)' });
+  return json(res, 200, { verified_via: 'jku', jku: m.jku, payload: m.payload, flag: FLAGS.jwt_jku });
+}
+
+// Signing oracle — signs arbitrary attacker data with the server's RSA private key.
+async function signOracle(req, res) {
+  const { body } = await readBody(req);
+  const data = String(body.data || '');
+  const sig = crypto.createSign('RSA-SHA256').update(data).sign(RSA.privateKey);
+  return json(res, 200, { data, signature: Buffer.from(sig).toString('base64url'),
+    note: 'signs anything — assemble your own RS256 token', flag: FLAGS.signing_oracle });
+}
+
+// Weak crypto — AES-128-ECB leaks that identical plaintext blocks map to identical ciphertext.
+async function seal(req, res) {
+  const { body } = await readBody(req);
+  const plain = Buffer.from(String(body.data || ''), 'utf8');
+  const key = Buffer.from('leakyjuice-key16'); // static 16-byte key
+  const c = crypto.createCipheriv('aes-128-ecb', key, null); c.setAutoPadding(true);
+  const ct = Buffer.concat([c.update(plain), c.final()]);
+  // detect the ECB tell: two identical 16-byte ciphertext blocks
+  const blocks = []; for (let i = 0; i + 16 <= ct.length; i += 16) blocks.push(ct.subarray(i, i + 16).toString('hex'));
+  const repeated = new Set(blocks).size < blocks.length;
+  const out = { ciphertext: ct.toString('hex'), mode: 'aes-128-ecb', blocks: blocks.length };
+  if (repeated) out.flag = FLAGS.weak_crypto_ecb; // identical blocks → ECB confirmed
+  return json(res, 200, out);
 }
 
 // ── v8 multi-actor / blind handlers ──

