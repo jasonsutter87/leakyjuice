@@ -136,6 +136,13 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/receipt' && method === 'GET') return receipt(req, res, q);      // path traversal
     if (p === '/api/points/transfer' && method === 'POST') return pointsTransfer(req, res); // CSRF
 
+    // ═══════════════════ v4: CashOut (money / fraud) ═══════════════════
+    if (p === '/api/giftcard/redeem' && method === 'POST') return giftcardRedeem(req, res);   // TOCTOU race
+    if (p === '/api/giftcard/balance' && method === 'GET') return giftcardBalance(req, res, q); // predictable codes
+    if (/^\/api\/orders\/\d+\/refund$/.test(p) && method === 'POST') return refundOrder(req, res, p.split('/')[3]); // replay
+    if (p === '/api/payment-methods' && method === 'GET') return paymentMethods(req, res, q);  // sellable card data
+    if (p === '/api/points/cashout' && method === 'POST') return pointsCashout(req, res);      // rounding/negative
+
     // ═══════════════════ IMPORT / UPLOAD / REDIRECT ═══════════════════
     if (p === '/api/import-avatar' && method === 'POST') return importAvatar(req, res); // SSRF
     if (p === '/api/upload' && method === 'POST') return upload(req, res);              // insecure upload
@@ -396,6 +403,69 @@ async function pointsTransfer(req, res) {
   db.prepare('UPDATE users SET balance_points = balance_points + ? WHERE id = ?').run(amount, to);
   return json(res, 200, { ok: true, from: a.uid, to, amount,
     note: 'no CSRF token required; cookie has no SameSite', flag: FLAGS.csrf });
+}
+
+// ── v4 CashOut handlers ──
+
+// Gift-card redeem with a TOCTOU window: balance is read, then (after an await) written.
+// Fire concurrent requests to redeem the same card many times → double-spend.
+async function giftcardRedeem(req, res) {
+  const { body } = await readBody(req);
+  const code = body.code || '';
+  const card = db.prepare('SELECT * FROM giftcards WHERE code = ?').get(code);
+  if (!card) return json(res, 404, { error: 'no such card' });
+  if (card.balance <= 0) return json(res, 400, { error: 'empty card', redeem_count: card.redeem_count });
+  // VULN: check-then-act with an await in between — the classic race window.
+  await new Promise((r) => setTimeout(r, 15));
+  db.prepare('UPDATE giftcards SET balance = balance - ?, redeem_count = redeem_count + 1, redeemed = 1 WHERE code = ?')
+    .run(card.balance, code);
+  const after = db.prepare('SELECT redeem_count, balance FROM giftcards WHERE code = ?').get(code);
+  const out = { ok: true, credited: card.balance, code, redeem_count: after.redeem_count, remaining: after.balance };
+  if (after.redeem_count > 1) out.flag = FLAGS.giftcard_race; // redeemed more than once → race won
+  return json(res, 200, out);
+}
+
+// Gift-card balance lookup — codes are sequential (GIFT-1001, 1002, …) → enumerate others'.
+function giftcardBalance(req, res, q) {
+  const card = db.prepare('SELECT code, balance, redeem_count FROM giftcards WHERE code = ?').get(q.code || '');
+  if (!card) return json(res, 404, { error: 'no such card' });
+  return json(res, 200, { ...card, note: 'codes are sequential GIFT-100N', flag: FLAGS.giftcard_brute });
+}
+
+// Refund replay — no "already refunded" / ownership check → refund the same order repeatedly.
+async function refundOrder(req, res, id) {
+  const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+  if (!o) return json(res, 404, { error: 'no such order' });
+  // VULN: never checks o.refunded, never checks caller owns the order.
+  db.prepare('UPDATE users SET balance_points = balance_points + ? WHERE id = ?').run(Math.round(o.total), o.user_id);
+  const wasRefunded = o.refunded;
+  db.prepare('UPDATE orders SET refunded = refunded + 1 WHERE id = ?').run(id);
+  const out = { ok: true, order: id, credited_points: Math.round(o.total), times_refunded: wasRefunded + 1 };
+  if (wasRefunded >= 1) out.flag = FLAGS.refund_abuse; // second+ refund of the same order
+  return json(res, 200, out);
+}
+
+// Saved payment methods — full PAN + CVV, no ownership check (sellable data).
+function paymentMethods(req, res, q) {
+  const uid = q.user_id;
+  const rows = uid
+    ? db.prepare('SELECT * FROM payment_methods WHERE user_id = ?').all(uid)
+    : db.prepare('SELECT * FROM payment_methods').all();
+  return json(res, 200, { payment_methods: rows, flag: FLAGS.card_data_leak });
+}
+
+// Points cashout — trusts a client conversion rate and allows negative amounts / rounding abuse.
+async function pointsCashout(req, res) {
+  const a = getAuth(req);
+  if (!a) return json(res, 401, { error: 'not logged in' });
+  const { body } = await readBody(req);
+  const points = Number(body.points);
+  const rate = body.rate != null ? Number(body.rate) : 0.01; // £ per point; VULN: attacker sets it
+  const cash = points * rate;
+  db.prepare('UPDATE users SET balance_points = balance_points - ? WHERE id = ?').run(points, a.uid);
+  const out = { ok: true, points, rate, cash: Math.round(cash * 100) / 100 };
+  if (rate > 0.01 || points < 0) out.flag = FLAGS.points_rounding; // inflated rate or negative points
+  return json(res, 200, out);
 }
 
 // #14 SSRF

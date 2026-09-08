@@ -267,7 +267,7 @@ personas name the tiers; the top rung is the graduation exam.
 | **v1** | — | 30 single-shot bugs (T0–T2), self-grading | ✅ shipped |
 | **v2** | **Mr-BlackKeys** | The chains — Receipt Heist, Coupon to Crown, Cache & Grab (capstones) | ✅ shipped |
 | **v3** | **Ask Juicy** | Deterministic LLM tier: prompt injection, system-prompt leak, insecure output handling, tool abuse → completes **Talk Your Way In** | ✅ shipped |
-| v4 | **CashOut** | Money/fraud: refund abuse, points-economy exploits, checkout double-spend race, currency/rounding, sellable-data dumps | planned |
+| **v4** | **CashOut** | Money/fraud: gift-card double-spend race, refund replay, sellable card data, points-rate abuse | ✅ shipped |
 | v5 | **Specter** | APT/persistence: forgeable "remember me", non-expiring/replayable tokens, webhook backdoor, audit-log evasion, dormant second-order payload | planned |
 | v6 | **Burn1t** | Chaos/DoS (safe, resettable): ReDoS, GraphQL nested-query bomb, decompression bomb on upload, mass-delete via BFLA, cache-poisoning deface | planned |
 | v7 | **Composer** | Supply-chain/cross-protocol: dependency confusion (from Chain C's SBOM), XXE import, prototype-pollution gadget, SSRF→cloud-metadata→creds | planned |

