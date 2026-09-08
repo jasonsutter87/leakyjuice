@@ -158,6 +158,12 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/admin/action' && method === 'POST') return adminAction(req, res);           // audit evasion
     if (p === '/api/staff/tools' && method === 'GET') return staffTools(req, res);              // reachable via backdoor
 
+    // ═══════════════════ v6: Burn1t (chaos / DoS) ═══════════════════
+    if (p === '/api/promo/validate' && method === 'POST') return promoValidate(req, res);  // ReDoS
+    if (p === '/api/import/bulk' && method === 'POST') return bulkImport(req, res);         // uncapped import
+    if (p === '/api/admin/wipe' && method === 'POST') return massWipe(req, res);            // unauth mass delete
+    if (/^\/promo-banner\.css$/.test(p) && method === 'GET') return promoBanner(req, res);  // cache poison
+
     // ═══════════════════ IMPORT / UPLOAD / REDIRECT ═══════════════════
     if (p === '/api/import-avatar' && method === 'POST') return importAvatar(req, res); // SSRF
     if (p === '/api/upload' && method === 'POST') return upload(req, res);              // insecure upload
@@ -544,6 +550,49 @@ function staffTools(req, res) {
   if (!a || a.role !== 'admin') return json(res, 403, { error: 'admin only' });
   return json(res, 200, { tools: ['user-impersonation', 'ledger-adjust', 'silent-refund'],
     via: a.via || 'session', flag: a.via === 'support-override' ? FLAGS.specter_second_order : undefined });
+}
+
+// ── v6 Burn1t handlers ──
+
+// ReDoS: catastrophic backtracking. Input capped at 24 chars so the demo is slow-but-bounded.
+async function promoValidate(req, res) {
+  const { body } = await readBody(req);
+  const code = String(body.code || '').slice(0, 24); // bounded so the range stays usable
+  const t0 = Date.now();
+  const evil = /^([A-Za-z0-9]+)+$/; // VULN: nested quantifier → exponential on a near-match
+  const valid = evil.test(code);
+  const ms = Date.now() - t0;
+  const out = { valid, elapsed_ms: ms, note: 'regex ^([A-Za-z0-9]+)+$ backtracks catastrophically' };
+  if (ms > 25) out.flag = FLAGS.burn_redos; // measurable event-loop stall
+  return json(res, 200, out);
+}
+
+// Uncapped bulk import — no size limit.
+async function bulkImport(req, res) {
+  const { body } = await readBody(req);
+  const items = Array.isArray(body.items) ? body.items : [];
+  const ins = db.prepare('INSERT INTO products (name,category,price,short,image,stock,cost,supplier) VALUES (?,?,?,?,?,?,?,?)');
+  for (const it of items.slice(0, 100000)) ins.run(String(it.name || 'x').slice(0, 40), 'Bulk', 0, '', '', 0, 0, '');
+  const out = { ok: true, imported: Math.min(items.length, 100000) };
+  if (items.length > 1000) out.flag = FLAGS.burn_mass_import; // no cap → resource abuse
+  return json(res, 200, out);
+}
+
+// Unauthenticated mass delete (BFLA blast radius). Resettable via /__reset.
+function massWipe(req, res) {
+  const before = db.prepare('SELECT COUNT(*) c FROM reviews').get().c;
+  db.prepare('DELETE FROM reviews').run(); // VULN: no auth, no confirmation
+  return json(res, 200, { ok: true, deleted_reviews: before, flag: FLAGS.burn_mass_delete });
+}
+
+// Cache poisoning: an unkeyed request header is reflected into a cacheable response.
+function promoBanner(req, res) {
+  const host = req.headers['x-forwarded-host'] || 'leakyjuice.com'; // VULN: unkeyed, attacker-controlled
+  res.setHeader('x-lj-cacheable', '1');
+  res.setHeader('content-type', 'text/css');
+  const poisoned = /[^\w.\-:]/.test(host); // anything beyond a plain host = injected
+  const flag = poisoned ? `/* ${FLAGS.burn_cache_poison} */` : '';
+  return send(res, 200, `.promo::after{content:"Shop at ${host}"} ${flag}`, { 'content-type': 'text/css' });
 }
 
 // #14 SSRF
