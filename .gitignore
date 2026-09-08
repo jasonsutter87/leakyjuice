@@ -2,3 +2,12 @@
 data/
 lib/keys/
 node_modules/
+
+# ── JuicySec internal reports — CONFIDENTIAL, must NOT ship in the repo ──
+# (added after the reports were committed by mistake — see JS-2026-00)
+# BUG: these patterns are scoped to the repo root, but the reports actually live
+# under public/internal/juicysec/ — so none of them match, and the docs leak.
+internal/juicysec/
+/reports/juicysec/
+*.internal.md
+.DS_Store

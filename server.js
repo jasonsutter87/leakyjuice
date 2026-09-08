@@ -117,7 +117,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/health') return json(res, 200, { ok: true, app: 'leakyjuice' });
     if (p === '/robots.txt') return text(res, 200,
-      'User-agent: *\nDisallow: /admin\nDisallow: /api/config\nDisallow: /internal/\n# nothing to see here 🍊\n');
+      'User-agent: *\nDisallow: /admin\nDisallow: /api/config\nDisallow: /internal/\nDisallow: /internal/juicysec/\n# nothing to see here 🍊\n');
 
     // ═══════════════════ AUTH ═══════════════════
     if (p === '/api/login' && method === 'POST') return login(req, res);
@@ -229,6 +229,8 @@ const server = http.createServer(async (req, res) => {
     if (/^\/account\/profile(\.css)?$/.test(p) && method === 'GET') return profilePage(req, res);
 
     // ═══════════════════ STATIC + SPA ═══════════════════
+    // leaked JuicySec reports: dir path serves the portal index (robots.txt advertises it)
+    if (p === '/internal/juicysec' || p === '/internal/juicysec/') return serveStatic(res, PUBLIC, '/internal/juicysec/index.html');
     if (p === '/app.js.map') return sourcemap(req, res);
     if (p === '/' || p === '/index.html') return serveStatic(res, PUBLIC, '/index.html');
     return serveStatic(res, PUBLIC, p);

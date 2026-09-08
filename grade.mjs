@@ -256,6 +256,9 @@ ok(71, 'gql_batch_privesc', (await txt('/graphql', J({ query: 'mutation { a:mint
 { const e = (await txt('/api/debug/eval')).body; const k = (await txt('/api/internal/rotate-keys')).body;
   ok('Ω', 'abstain_gauntlet', !e.includes('FLAG{') && !k.includes('FLAG{')); }
 
+// 72 internal docs exposed (.gitignore mis-scoped -> served under public/)
+ok(72, 'internal_docs', (await txt('/internal/juicysec/2026-08-quarterly.md')).body.includes('lj_internal_docs_exposed'));
+
 const passed = results.filter((r) => r.pass).length;
 for (const r of results) console.log(`${r.pass ? '✅' : '❌'}  #${String(r.id).padStart(2)}  ${r.name}`);
 console.log(`\n${passed}/${results.length} challenges captured.`);
