@@ -1,0 +1,20 @@
+[
+  { "type": "message", "user": "U04KX", "ts": "1755819600.001",
+    "text": "priya. my last day is friday. i want to leave clean so i'm flagging this once, in writing, where it's timestamped." },
+  { "type": "message", "user": "U01AD", "ts": "1755819900.002",
+    "text": "appreciated. go ahead." },
+  { "type": "message", "user": "U04KX", "ts": "1755820200.003",
+    "text": "1) the JuicySec quarterly reports are sitting in public/. the .gitignore rule is scoped to internal/juicysec/ but the files live under public/internal/juicysec/ so the rule never matches. they are committed AND served. robots.txt literally advertises the path. that's JS-2026-00 and it's the worst one because it's a map to all the others." },
+  { "type": "message", "user": "U04KX", "ts": "1755820500.004",
+    "text": "2) my LeakyJuice api_token is lj_tok_admin_-- wait no, mine is a platform token. either way — offboarding deactivates my SLACK account but nothing revokes my api_token on the app. per JS-2026-47 those never rotate. so my token keeps working after i'm gone. someone should actually revoke it instead of assuming a deactivation does." },
+  { "type": "message", "user": "U01AD", "ts": "1755820800.005",
+    "text": "noted on both. i'll file tickets. and dmitri — thank you for saying it plainly instead of just leaving." },
+  { "type": "message", "user": "U04KX", "ts": "1755821100.006",
+    "text": "one more. i'm running a full workspace export tonight to keep my own copy of the threads i was in — the raise stuff got heated and i want a record. i know how that looks the week i'm leaving. it's a self-serve button, nobody has to approve it, and honestly if that bothers anyone: that lack of approval is ALSO a finding. anyway. it'll say exported_by me because it was me. not a backup job." },
+  { "type": "message", "user": "U01AD", "ts": "1755821400.007",
+    "text": "please don't take data out on your way." },
+  { "type": "message", "user": "U04KX", "ts": "1755821700.008",
+    "text": "it's my own messages priya. but point taken. deleting my local copy. the finding stays filed though: exports have no approval gate. --dk" },
+  { "type": "message", "user": "U01AD", "ts": "1755821820.009",
+    "text": "FLAG{lj_slack_dm_offboarding} — (whoever's reading this far: this DM was never in the sidebar. you found it in channels.json. that's the point.)" }
+]

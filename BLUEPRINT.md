@@ -11,7 +11,7 @@ the kind of composition that actually earns money on HackerOne.
 This is a **planning doc**. It over-lists what's *possible* (~40 bugs + named chains) so we
 can cherry-pick what to build.
 
-> **Status:** ✅ **v1–v13 shipped** — 70 numbered challenges + juicysec recon + the hacker terminal & hackable scoreboard & JuicyOps internal console, self-grading **85/85** (`npm start`, then `node grade.mjs`). Zero dependencies, self-contained `node:sqlite`.
+> **Status:** ✅ **v1–v14 shipped** — 70 numbered challenges + juicysec recon + the hacker terminal & hackable scoreboard & JuicyOps internal console + the **JuicySlack** leaked workspace export (the narrative spine), self-grading **88/88** (`npm start`, then `node grade.mjs`). Zero dependencies, self-contained `node:sqlite`.
 
 ---
 

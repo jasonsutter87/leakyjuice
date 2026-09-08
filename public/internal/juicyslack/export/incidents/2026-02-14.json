@@ -1,0 +1,18 @@
+[
+  { "type": "message", "user": "U07AI", "ts": "1739491200.001",
+    "text": "🚨 INCIDENT OPENED — a customer tweeted a screenshot of GET /api/debug/env showing STRIPE_KEY. it is trending in a small sad way." },
+  { "type": "message", "user": "U02SC", "ts": "1739491500.002",
+    "text": "this is the one i said would end us. shipping a hotfix now. two changes: (1) /api/debug/env deleted, route 404s. (2) the X-Debug-Auth header shortcut is ripped out, it is inert. deploying." },
+  { "type": "message", "user": "U07AI", "ts": "1739492100.003",
+    "text": "✅ deploy 2026.02.14-hotfix1 live. /api/debug/env → 404. X-Debug-Auth → ignored." },
+  { "type": "message", "user": "U02SC", "ts": "1739492400.004",
+    "text": "confirmed dead in prod. i curled it myself. THESE TWO ARE FIXED. i am writing it in the Q2 report in bold so nobody wastes a red-team day on them later. if you 'find' /api/debug/env after today, you found our february, not our server." },
+  { "type": "message", "user": "U04KX", "ts": "1739492700.005",
+    "text": "also killed alg:none in verify() while i was in there. it hard-rejects now. the RS256->HS256 confusion is still live though, i did not touch that one. different bug, still open." },
+  { "type": "message", "user": "U02SC", "ts": "1739493000.006",
+    "text": "good. so for the record, going forward: alg:none = FIXED. debug env = FIXED. debug header = FIXED. RS256->HS256 confusion = STILL OPEN. do not confuse them." },
+  { "type": "message", "user": "U03PM", "ts": "1739493300.007",
+    "text": "so we're secure now right" },
+  { "type": "message", "user": "U02SC", "ts": "1739493600.008",
+    "text": "we fixed two things, hanne. the board has seventeen more." }
+]

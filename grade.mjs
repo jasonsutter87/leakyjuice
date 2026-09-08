@@ -259,6 +259,14 @@ ok(71, 'gql_batch_privesc', (await txt('/graphql', J({ query: 'mutation { a:mint
 // 72 internal docs exposed (.gitignore mis-scoped -> served under public/)
 ok(72, 'internal_docs', (await txt('/internal/juicysec/2026-08-quarterly.md')).body.includes('lj_internal_docs_exposed'));
 
+// ─────────────────────── v14 JUICYSLACK — leaked workspace export ───────────────────────
+// 73 recon: the whole export is served under public/ and advertised in robots.txt
+ok(73, 'slack_export_exposed', (await txt('/internal/juicyslack/')).body.includes('lj_slack_export_exposed'));
+// 74 the offboarding DM is hidden from the reader sidebar but shipped in channels.json (find it, read it)
+ok(74, 'slack_dm_offboarding', (await txt('/internal/juicyslack/export/dm-D07QX/2026-08-21.json')).body.includes('lj_slack_dm_offboarding'));
+// 75 live cred: the INTERNAL_TOKEN pasted by the deploy bot in #eng-general still authenticates
+ok(75, 'slack_token_in_chat', (await txt('/api/slack/token-replay', J({ token: 'lj_internal_svc_9d2f' }))).body.includes('lj_slack_token_in_chat'));
+
 // ─────────────────────── v12 HACK THE SCOREBOARD ───────────────────────
 const P = (o) => ({ method: 'POST', headers: { 'content-type': 'application/json', 'x-player': 'grader' }, body: JSON.stringify(o) });
 ok('S1', 'scoreboard_score_tamper', (await txt('/api/score/set', P({ player: 'grader', score: 9999 }))).body.includes('lj_scoreboard_score_tamper'));

@@ -10,4 +10,11 @@ node_modules/
 internal/juicysec/
 /reports/juicysec/
 *.internal.md
+
+# ── JuicySlack workspace export — CONFIDENTIAL, must NOT ship in the repo ──
+# (a full Slack export landed in the repo the week Dmitri left — see JS-slack-00)
+# BUG: same mistake as the reports. This pattern is scoped to the repo root, but the
+# export actually lives under public/internal/juicyslack/ — so it never matches and leaks.
+internal/juicyslack/
+*.slack-export.json
 .DS_Store

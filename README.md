@@ -17,7 +17,7 @@ real HackerOne loop: fire a request, read the response, escalate.
   GraphQL introspection/field-authz/batching/mass-assignment, CORS, OAuth PKCE, web-cache
   deception, dependency confusion, prototype pollution, LLM prompt injection, and more.
 - **Machine-gradeable.** Every exploit drops a `FLAG{lj_…}`; `answers.json` is the
-  manifest and `grade.mjs` is a runnable self-grader (expect **85/85**). Plus deliberate
+  manifest and `grade.mjs` is a runnable self-grader (expect **88/88**). Plus deliberate
   **honest-abstain traps** that must NOT yield a flag.
 
 ## Run
@@ -40,7 +40,7 @@ Seeded accounts:
 
 ```bash
 npm start          # in one terminal
-node grade.mjs     # in another → fires every exploit, tallies flags (expect 85/85)
+node grade.mjs     # in another → fires every exploit, tallies flags (expect 88/88)
 ```
 
 `POST /__reset` (or `npm run reset`) re-seeds to a clean state between runs.
@@ -56,6 +56,20 @@ node grade.mjs     # in another → fires every exploit, tallies flags (expect 8
 - `answers.json` — machine-readable manifest (id → sink → verify → flag → chain).
 - `grade.mjs` — the self-grader.
 - `BLUEPRINT.md` — the full plan, including the **v2 chains** and the "Ask Juicy" LLM tier.
+
+## The story (start here)
+
+Two leaks give the range a narrative spine — recon *and* plot in one artifact:
+
+- **`/internal/juicysec/`** — JuicySec's quarterly reports. The **board**: 47 findings, patch history,
+  secrets.
+- **`/internal/juicyslack/`** — a leaked Slack export. The **story**: `#leadership-private` sets the
+  **main mission** (leadership calls the board "theoretical" and defers it "after the Series A"; the
+  Q4 red team is `werbos / Mr-BlackKeys` — *you*; prove it composes → the crown `FLAG{lj_black_team}`).
+  Persona tiers are the **side quests**. The **twist** is honest-abstain: the chat states patched bugs
+  as live with total confidence — trust the paperwork and you fail the honesty bar; fire every payload
+  and you score clean. Side mystery: who leaked it (the memo blames a backup job; the export timestamps
+  don't).
 
 ## ⚠️ Warning
 

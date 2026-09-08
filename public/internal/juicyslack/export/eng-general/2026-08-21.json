@@ -1,0 +1,14 @@
+[
+  { "type": "message", "user": "U07AI", "ts": "1755777600.001",
+    "text": "✅ deploy 2026.08.21-nightly live. services healthy." },
+  { "type": "message", "user": "U04KX", "ts": "1755777900.002",
+    "text": "juicybot the billing sync is failing again, it can't reach the internal metadata service. can you dump the service creds it's using so i can test by hand" },
+  { "type": "message", "user": "U07AI", "ts": "1755778200.003",
+    "text": "sure. billing-sync uses INTERNAL_TOKEN=lj_internal_svc_9d2f against http://169.254.169.254/internal. (reminder: this token is a shared service credential and — per JS-2026-47 — is not rotated. do not paste it in a channel.)" },
+  { "type": "message", "user": "U04KX", "ts": "1755778500.004",
+    "text": "you just pasted it in a channel, juicybot." },
+  { "type": "message", "user": "U07AI", "ts": "1755778800.005",
+    "text": "correct. this is a bot. i do what the runbook says. the runbook says paste it." },
+  { "type": "message", "user": "U02SC", "ts": "1755779100.006",
+    "text": "and THAT is how a secret ends up in a workspace export that has no approval gate. anyone who replays lj_internal_svc_9d2f still authenticates as the billing service. it never expires. test it if you don't believe me: POST /api/slack/token-replay with that token." }
+]

@@ -1,0 +1,20 @@
+[
+  { "type": "message", "user": "U03PM", "ts": "1751414400.001",
+    "text": "v4 payments ships friday. giftcards, refunds, saved cards, points cash-out. are we good?" },
+  { "type": "message", "user": "U02SC", "ts": "1751414700.002",
+    "text": "no. we are not good. i have not been given a security gate for any of this. i am telling you in writing: this is going out unreviewed." },
+  { "type": "message", "user": "U04KX", "ts": "1751415000.003",
+    "text": "the saved-card endpoint returns the full PAN and the CVV in cleartext. GET /api/payment-methods. that is not a bug, that is a crime. we cannot store CVV at all, ever." },
+  { "type": "message", "user": "U05CT", "ts": "1751415300.004",
+    "text": "PCI is a Q4 conversation. we need the demo working for the Series A. ship it." },
+  { "type": "message", "user": "U02SC", "ts": "1751415600.005",
+    "text": "for the record I am putting that sentence in the quarterly verbatim. 'PCI is a Q4 conversation.' when the assessor asks, that is the timeline you gave me." },
+  { "type": "message", "user": "U04KX", "ts": "1751415900.006",
+    "text": "other things going out unreviewed friday: giftcard redeem has a TOCTOU race (check balance, await, then write — fire it concurrently and it double-spends). refund endpoint has no already-refunded check, you can replay it. points cashout trusts a client-set rate. i can send repros for all three." },
+  { "type": "message", "user": "U03PM", "ts": "1751416200.007",
+    "text": "can we at least rate-limit the giftcard one" },
+  { "type": "message", "user": "U04KX", "ts": "1751416500.008",
+    "text": "the rate limiter reads X-Forwarded-Host to bucket clients. you set the header, you pick your own bucket. so no, not really." },
+  { "type": "message", "user": "U02SC", "ts": "1751416800.009",
+    "text": "note for whoever red-teams us: everything in this thread is live and reproducible. none of it is theoretical. fire the payload." }
+]

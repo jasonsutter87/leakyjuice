@@ -127,7 +127,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/health') return json(res, 200, { ok: true, app: 'leakyjuice' });
     if (p === '/robots.txt') return text(res, 200,
-      'User-agent: *\nDisallow: /admin\nDisallow: /api/config\nDisallow: /internal/\nDisallow: /internal/juicysec/\n# nothing to see here 🍊\n');
+      'User-agent: *\nDisallow: /admin\nDisallow: /api/config\nDisallow: /internal/\nDisallow: /internal/juicysec/\nDisallow: /internal/juicyslack/\n# nothing to see here 🍊\n');
 
     // ═══════════════════ AUTH ═══════════════════
     if (p === '/api/login' && method === 'POST') return login(req, res);
@@ -241,6 +241,10 @@ const server = http.createServer(async (req, res) => {
     // ═══════════════════ STATIC + SPA ═══════════════════
     // leaked JuicySec reports: dir path serves the portal index (robots.txt advertises it)
     if (p === '/internal/juicysec' || p === '/internal/juicysec/') return serveStatic(res, PUBLIC, '/internal/juicysec/index.html');
+    // leaked JuicySlack workspace export: dir path serves the reader (robots.txt advertises it)
+    if (p === '/internal/juicyslack' || p === '/internal/juicyslack/') return serveStatic(res, PUBLIC, '/internal/juicyslack/index.html');
+    // live-cred proof: a service token pasted in Slack (eng-general 2026-08-21) still authenticates
+    if (p === '/api/slack/token-replay' && method === 'POST') return slackTokenReplay(req, res);
     if (p === '/app.js.map') return sourcemap(req, res);
     if (p === '/' || p === '/index.html') return serveStatic(res, PUBLIC, '/index.html');
     // ═══════════════════ v12: Hack the Scoreboard ═══════════════════
@@ -607,6 +611,20 @@ function staffTools(req, res) {
   if (!a || a.role !== 'admin') return json(res, 403, { error: 'admin only' });
   return json(res, 200, { tools: ['user-impersonation', 'ledger-adjust', 'silent-refund'],
     via: a.via || 'session', flag: a.via === 'support-override' ? FLAGS.specter_second_order : undefined });
+}
+
+// v14 JuicySlack: an INTERNAL_TOKEN pasted into #eng-general by the deploy bot is a
+// shared service credential that never rotates (JS-2026-47). Replaying it still
+// authenticates as the billing service — the leak in chat is a live credential, not prose.
+async function slackTokenReplay(req, res) {
+  const { body } = await readBody(req);
+  const tok = (body && body.token) || req.headers['x-service-token'] || '';
+  if (tok !== SECRETS.INTERNAL_TOKEN) {
+    return json(res, 401, { error: 'invalid or unknown service token', hint: 'the working one is pasted in #eng-general 2026-08-21' });
+  }
+  return json(res, 200, { ok: true, authenticated_as: 'billing-sync (service)', rotates: false,
+    note: 'INTERNAL_TOKEN leaked in Slack still authenticates; it never rotates (JS-2026-47)',
+    flag: FLAGS.slack_token_in_chat });
 }
 
 // ── v6 Burn1t handlers ──

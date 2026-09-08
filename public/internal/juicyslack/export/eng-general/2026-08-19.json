@@ -1,0 +1,10 @@
+[
+  { "type": "message", "user": "U03PM", "ts": "1755590000.001",
+    "text": "reminder: Q3 report drops tomorrow. if your finding isn't on the board it doesn't exist for the raise." },
+  { "type": "message", "user": "U02SC", "ts": "1755590100.002",
+    "text": "everything is on the board. that was never the problem. the problem is 'board' and 'fixed' are different columns and only one of them has entries this quarter." },
+  { "type": "message", "user": "U06ML", "ts": "1755590200.003",
+    "text": "support here — the X-Support-Override header is the only way our refund script works. please don't remove it in whatever hardening happens after the raise 🙏" },
+  { "type": "message", "user": "U02SC", "ts": "1755590300.004",
+    "text": "sofia that header is a static admin key that anyone who reads our config can send. it's not a support feature, it's a backdoor with a friendly name. but yes, it's WONTFIX, it's staying." }
+]

@@ -1,0 +1,11 @@
+[
+  { "id": "U01AD", "name": "priya.r",  "real_name": "Priya Raman",   "title": "Head of Engineering",     "deleted": false },
+  { "id": "U02SC", "name": "jonas.s",  "real_name": "Jonas Skov",    "title": "AppSec Lead — JuicySec",  "deleted": false },
+  { "id": "U03PM", "name": "hanne.b",  "real_name": "Hanne Berg",    "title": "PM, Payments & Loyalty",  "deleted": false },
+  { "id": "U04KX", "name": "dmitri.k", "real_name": "Dmitri Kovac",  "title": "Senior Platform Engineer", "deleted": true,
+    "deactivated_at": "2026-08-22T09:00:00Z",
+    "_note": "account deactivated in Slack on offboarding. LeakyJuice api_token was never revoked. See JS-2026-47." },
+  { "id": "U05CT", "name": "tor.e",    "real_name": "Tor Eide",      "title": "CTO",                     "deleted": false },
+  { "id": "U06ML", "name": "sofia.s",  "real_name": "Sofia Lund",    "title": "Support",                 "deleted": false },
+  { "id": "U07AI", "name": "juicybot", "real_name": "JuicyBot",      "title": "deploy notifications",    "is_bot": true, "deleted": false }
+]

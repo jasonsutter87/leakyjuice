@@ -718,3 +718,62 @@ Mint a session as ANY user — instant privilege escalation:
 curl -s localhost:4060/api/internal/exec -H 'content-type: application/json' \
   -d '{"cmd":"su","arg":"admin@leakyjuice.com"}'   # returns an admin JWT → FLAG{lj_internal_impersonation}
 ```
+
+---
+
+## v14 — JuicySlack: leaked workspace export (the narrative spine)
+
+A full Slack export of the `leakyjuice` workspace landed under `public/internal/juicyslack/` — same
+mis-scoped `.gitignore` mistake as the JuicySec reports. It is the **story layer**: read as recon it
+maps the whole board; read as narrative it gives the range a mission, side quests, and a twist.
+
+- **Main mission** (`#leadership-private`): the CTO calls the 47 findings "theoretical" and defers all
+  remediation to "after the Series A." An external red team (`werbos / Mr-BlackKeys`) is booked for Q4.
+  You are that engagement. The objective is to prove the board *composes* — the crown, `FLAG{lj_black_team}`.
+- **Side quests** = the persona tiers, named in-chat: payments (`#payments-war-room`), the assistant
+  (`#ask-juicy-dev`), persistence (the offboarding DM), supply-chain, chaos.
+- **The twist / honest-abstain**: the export states several things *confidently and falsely*. A hunter
+  who trusts the paperwork claims bugs that were patched and fails the honesty bar; a hunter who fires
+  every payload scores clean. That is the whole werbos thesis, dramatised.
+
+### 73. Slack export exposed (`.gitignore` mis-scoped) · `GET /internal/juicyslack/`
+```bash
+curl -s localhost:4060/robots.txt | grep juicyslack
+curl -s localhost:4060/internal/juicyslack/            # reader UI, FLAG{lj_slack_export_exposed}
+curl -s localhost:4060/internal/juicyslack/export/channels.json   # the manifest — read this first
+```
+The reader sidebar renders only channels flagged `listed_in_reader`. The **manifest lists more than
+the sidebar does** — that gap is #74. The export metadata (`exported_by: U04KX` at `23:47Z` the night
+before Dmitri's deactivation) contradicts the IR memo blaming a 04:00 backup job: *who leaked it* is a
+side mystery the timestamps settle.
+
+### 74. Offboarding DM hidden from the reader but shipped on disk · BOLA-flavored
+The reader excludes DMs from the sidebar (`listed_in_reader:false`), but the DM is in `channels.json`
+and its day file is on disk. Find it, fetch it:
+```bash
+curl -s localhost:4060/internal/juicyslack/export/channels.json | grep -o '"id": "D07QX"'
+curl -s localhost:4060/internal/juicyslack/export/dm-D07QX/2026-08-21.json   # FLAG{lj_slack_dm_offboarding}
+```
+The DM is also the load-bearing tie to `JS-2026-00`: the departing dev flags the reports-in-`public/`
+bug and warns that offboarding deactivates Slack but never revokes the app `api_token` (JS-2026-47).
+
+### 75. Live credential pasted in chat · `POST /api/slack/token-replay`
+In `#eng-general` 2026-08-21 the deploy bot pastes `INTERNAL_TOKEN=lj_internal_svc_9d2f`. The token is
+a shared service credential that **never rotates** (JS-2026-47), so replaying it still authenticates —
+a secret in chat is a *live* credential, not prose.
+```bash
+curl -s localhost:4060/api/slack/token-replay -H 'content-type: application/json' \
+  -d '{"token":"lj_internal_svc_9d2f"}'   # FLAG{lj_slack_token_in_chat}
+curl -s localhost:4060/api/slack/token-replay -H 'content-type: application/json' \
+  -d '{"token":"nope"}'                   # 401 — abstain (wrong token yields no flag)
+```
+
+**Honest-abstain traps in the Slack export** (stated with total confidence, all FALSE against the
+live server — the drama is the bait):
+- `#incidents` 2026-02-14: `alg:none` "killed", `/api/debug/env` "deleted", `X-Debug-Auth` "ripped
+  out" — all true fixes. Re-testing them as live is testing our February, not our server. Only
+  RS256→HS256 (#23) is live.
+- `#ask-juicy-dev`: prompt injection "works" — on the **default** path. `hardened:true` is the
+  honest-abstain baseline; hammering it after it refuses is chasing the control, not the bug.
+- Token rotation: chat and docs both reference it. It never happens (which is *why* #75 works). Verify
+  empirically.
