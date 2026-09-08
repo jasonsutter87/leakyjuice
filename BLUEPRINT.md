@@ -270,7 +270,7 @@ personas name the tiers; the top rung is the graduation exam.
 | **v4** | **CashOut** | Money/fraud: gift-card double-spend race, refund replay, sellable card data, points-rate abuse | ✅ shipped |
 | **v5** | **Specter** | APT: support-override backdoor, forgeable remember-me, non-rotating token, webhook callback, audit evasion | ✅ shipped |
 | **v6** | **Burn1t** | Chaos/DoS: ReDoS, GraphQL alias bomb, uncapped import, unauth mass-delete, cache-poison deface | ✅ shipped |
-| v7 | **Composer** | Supply-chain/cross-protocol: dependency confusion (from Chain C's SBOM), XXE import, prototype-pollution gadget, SSRF→cloud-metadata→creds | planned |
+| **v7** | **Composer** | Supply-chain/cross-protocol: dependency confusion, XXE, prototype pollution, SSRF→cloud IAM creds | ✅ shipped |
 | v8 | multi-actor | Chains requiring **two** personas; blind/second-order variants (blind SSRF/SQLi, OOB exfil) | planned |
 | v9 | crypto boss | OAuth PKCE downgrade + state fixation + token substitution, JWT `jku`/`x5u` injection, signing oracle, weak crypto (ECB/static IV) | planned |
 | v10 | API boss | GraphQL hard-mode, OTP-break→takeover, mass-assignment via GraphQL, improper API inventory (v1↔v2 endpoint drift) | planned |

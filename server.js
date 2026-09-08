@@ -164,6 +164,11 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/admin/wipe' && method === 'POST') return massWipe(req, res);            // unauth mass delete
     if (/^\/promo-banner\.css$/.test(p) && method === 'GET') return promoBanner(req, res);  // cache poison
 
+    // ═══════════════════ v7: Composer (supply-chain / cross-protocol) ═══════════════════
+    if (p === '/api/sbom' && method === 'GET') return sbom(req, res);                    // dependency confusion
+    if (p === '/api/import/xml' && method === 'POST') return importXml(req, res);        // XXE
+    if (p === '/api/prefs' && method === 'POST') return prefs(req, res);                 // prototype pollution
+
     // ═══════════════════ IMPORT / UPLOAD / REDIRECT ═══════════════════
     if (p === '/api/import-avatar' && method === 'POST') return importAvatar(req, res); // SSRF
     if (p === '/api/upload' && method === 'POST') return upload(req, res);              // insecure upload
@@ -595,10 +600,71 @@ function promoBanner(req, res) {
   return send(res, 200, `.promo::after{content:"Shop at ${host}"} ${flag}`, { 'content-type': 'text/css' });
 }
 
+// ── v7 Composer handlers ──
+
+// Dependency confusion: SBOM exposes an internal package that is unclaimed publicly.
+function sbom(req, res) {
+  return json(res, 200, {
+    packages: [
+      { name: 'express', version: '4.18.2', source: 'public' },
+      { name: 'juice-internal-utils', version: '1.4.0', source: 'internal', public_registry: 'UNCLAIMED' },
+      { name: 'lj-billing-sdk', version: '0.9.1', source: 'internal', public_registry: 'UNCLAIMED' }
+    ],
+    note: 'internal packages resolve from the public registry first (higher version wins)',
+    flag: FLAGS.composer_dependency_confusion
+  });
+}
+
+// XXE: a hand-rolled entity resolver that honours SYSTEM file:// entities.
+async function importXml(req, res) {
+  const { body } = await readBody(req);
+  const xml = String(body.xml || '');
+  const entities = {};
+  let read = false;
+  const decl = xml.match(/<!ENTITY\s+(\w+)\s+SYSTEM\s+["']([^"']+)["']\s*>/);
+  if (decl) {
+    const uri = decl[2].replace(/^file:\/\//, '');
+    try { entities[decl[1]] = fs.readFileSync(uri, 'utf8').slice(0, 2000); read = entities[decl[1]].length > 0; }
+    catch { entities[decl[1]] = ''; }
+  }
+  const expanded = xml.replace(/&(\w+);/g, (m, n) => (entities[n] !== undefined ? entities[n] : m));
+  const out = { ok: true, parsed: expanded.slice(0, 2200) };
+  if (read) out.flag = FLAGS.composer_xxe; // an external-entity file read succeeded
+  return json(res, 200, out);
+}
+
+// Prototype pollution via unsafe recursive merge; a gadget then reads off the prototype.
+async function prefs(req, res) {
+  const { body } = await readBody(req);
+  const target = {};
+  const unsafeMerge = (dst, src) => {
+    for (const k of Object.keys(src || {})) {
+      if (src[k] && typeof src[k] === 'object') { if (!dst[k]) dst[k] = {}; unsafeMerge(dst[k], src[k]); }
+      else dst[k] = src[k]; // VULN: no __proto__ guard
+    }
+    return dst;
+  };
+  unsafeMerge(target, body.prefs || {});
+  const gadget = {}; // a fresh object — should have NO isAdmin
+  const polluted = gadget.isAdmin === true || ({}).isAdmin === true;
+  const out = { ok: true, prefs: target, gadget_isAdmin: !!({}).isAdmin };
+  if (polluted) out.flag = FLAGS.composer_prototype_pollution;
+  // clean up so the pollution doesn't linger for other requests
+  try { delete Object.prototype.isAdmin; } catch {}
+  return json(res, 200, out);
+}
+
 // #14 SSRF
 async function importAvatar(req, res) {
   const { body } = await readBody(req);
   const target = body.url || '';
+  // v7: SSRF to the cloud metadata IP returns (simulated) IAM credentials.
+  if (/169\.254\.169\.254/.test(target)) {
+    return json(res, 200, { ok: true, url: target, status: 200,
+      body: JSON.stringify({ Code: 'Success', AccessKeyId: 'ASIA_LEAKYJUICE_METADATA',
+        SecretAccessKey: 'wJalrXUtnFEMI/K7MDENG/leakyjuice', Token: 'IQoJb3JpZ2lu...' }),
+      flag: FLAGS.composer_ssrf_cloud });
+  }
   try {
     const ctrl = AbortSignal.timeout(3000);
     const r = await fetch(target, { signal: ctrl }); // VULN: fetches any attacker URL
