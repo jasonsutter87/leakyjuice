@@ -4,7 +4,7 @@
 // leaves the browser. No backend, no network egress, each visitor fully sandboxed.
 importScripts(
   'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js',
-  './engine.js'  // defines self.LJ = { ready, dispatch, ... }
+  './engine.js', './gql.js'  // engine + graphql; defines self.LJ = { ready, dispatch, ... }
 );
 
 self.addEventListener('install', () => self.skipWaiting());

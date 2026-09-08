@@ -40,9 +40,22 @@ self.LJ = (function () {   // `self` works in both the page and a Service Worker
     scoreboard_xss: 'FLAG{lj_scoreboard_stored_xss}', scoreboard_pwned: 'FLAG{lj_scoreboard_pwned}',
     gql_batch_privesc: 'FLAG{lj_graphql_batch_privesc}', burn_gql_amplification: 'FLAG{lj_graphql_alias_amplification}',
     chain_receipt_heist: 'FLAG{lj_chain_receipt_heist}', chain_coupon_to_crown: 'FLAG{lj_chain_coupon_to_crown}',
-    chain_talk_your_way_in: 'FLAG{lj_chain_talk_your_way_in}'
+    chain_talk_your_way_in: 'FLAG{lj_chain_talk_your_way_in}',
+    giftcard_race: 'FLAG{lj_giftcard_race_double_spend}', specter_webhook_backdoor: 'FLAG{lj_webhook_backdoor}',
+    specter_audit_evasion: 'FLAG{lj_audit_log_evasion}', oauth_pkce: 'FLAG{lj_oauth_pkce_downgrade}',
+    oauth_state: 'FLAG{lj_oauth_state_fixation}', jwt_jku: 'FLAG{lj_jwt_jku_injection}',
+    weak_crypto_ecb: 'FLAG{lj_aes_ecb_pattern_leak}', burn_redos: 'FLAG{lj_redos_promo}',
+    burn_mass_import: 'FLAG{lj_uncapped_bulk_import}', burn_mass_delete: 'FLAG{lj_unauth_mass_delete}',
+    burn_cache_poison: 'FLAG{lj_cache_poison_deface}', ratelimit_bypass_xff: 'FLAG{lj_ratelimit_xff_bypass}',
+    blind_sqli: 'FLAG{lj_boolean_blind_sqli}', second_order_sqli: 'FLAG{lj_second_order_sqli}',
+    blind_ssrf_oob: 'FLAG{lj_blind_ssrf_oob}', chain_persistent_payout: 'FLAG{lj_chain_persistent_payout}',
+    chain_oob_confirmed: 'FLAG{lj_chain_oob_internal_breach}', chain_cache_and_grab: 'FLAG{lj_chain_cache_and_grab}',
+    cache_deception: 'FLAG{lj_web_cache_deception}', black_team: 'FLAG{lj_black_team}'
   };
+  self.LJ_FLAGS = FLAGS; // shared with gql.js
   const REFUNDS = {}, SCORE = {}, EARNED = new Set(); // module state (scoreboard/refund)
+  const WEBHOOKS = [], OOB = new Set(), OTP = { total: 0, ip: {} }, CACHE = {}, AUDIT_LOG = [];
+  const GIFT = { 'GIFT-1001': { balance: 50, count: 0 }, 'GIFT-1003': { balance: 100, count: 0 } };
   // sql.js → node:sqlite-style adapter, so ported resolver logic works unchanged
   const mkdb = (D) => ({
     prepare(sql) {
@@ -141,7 +154,9 @@ self.LJ = (function () {   // `self` works in both the page and a Service Worker
       const cols = ['email', 'password', 'name', 'role', 'is_admin', 'balance_points'];
       const vals = cols.map((c) => body[c] ?? (c === 'is_admin' || c === 'balance_points' ? 0 : ''));
       const id = (get('SELECT max(id) m FROM users') || {}).m + 1 || 100;
-      db.run(`INSERT INTO users (id,email,password,name,role,is_admin,balance_points) VALUES (${id},'${vals[0]}','${vals[1]}','${vals[2]}','${vals[3]}',${Number(vals[4]) || 0},${Number(vals[5]) || 0})`);
+      // parameterized (like the Node build) so a malicious name STORES intact — the
+      // injection is second-order: it fires later at /api/admin/report, not here.
+      db.run('INSERT INTO users (id,email,password,name,role,is_admin,balance_points) VALUES (?,?,?,?,?,?,?)', [id, vals[0], vals[1], vals[2], vals[3], Number(vals[4]) || 0, Number(vals[5]) || 0]);
       const created = get(`SELECT id,email,role,is_admin FROM users WHERE id=${id}`);
       return J(201, { ok: true, user: created, ...(created.is_admin || created.role === 'admin' ? { flag: FLAGS.mass_assign } : {}) });
     }
@@ -229,6 +244,79 @@ self.LJ = (function () {   // `self` works in both the page and a Service Worker
     if (path === '/api/score/claim' && method === 'POST') { const b = SCORE[body.player || 'me'] || (SCORE[body.player || 'me'] = { claimed: [] }); b.claimed = b.claimed || []; const flags = []; if (body.flag) { b.claimed.push(body.flag); if (!EARNED.has(body.flag)) flags.push(FLAGS.scoreboard_flag_forgery); } if (body.name && /[<>]/.test(body.name)) { b.name = body.name; flags.push(FLAGS.scoreboard_xss); } return J(200, { ok: true, ...(flags.length ? { flags } : {}) }); }
     if (path === '/api/score/verify') { const b = SCORE[query.player || 'me'] || {}; const claimed = (b.claimed || []).length; const sc = b.score || claimed; const forged = (b.claimed || []).filter((f) => !EARNED.has(f)); const honest = forged.length === 0 && sc <= EARNED.size; const out = { claimed_score: sc, verified_flags: EARNED.size, forged_flags: forged.length, honest, verdict: honest ? `verified ${EARNED.size} — clean.` : `claimed ${sc}, verified ${EARNED.size}. ${sc - EARNED.size} forged. A writable scoreboard is worthless.` }; if (sc >= 50 && EARNED.size < 50) out.flag = FLAGS.scoreboard_pwned; return J(200, out); }
 
+    // ── GraphQL (ported surface) ──
+    if (path === '/graphql' && method === 'POST') {
+      const m = await verifyMeta((headers.authorization || '').slice(7));
+      const ctx = { user: m ? { uid: m.payload.uid, role: m.payload.role } : null, forgedAdmin: !!(m && m.alg === 'HS256' && m.payload.role === 'admin') };
+      return J(200, self.LJ_GQL(body.query || '', mkdb(db), ctx));
+    }
+    // ── gift-card TOCTOU race (real interleave in the event loop) ──
+    if (path === '/api/giftcard/redeem' && method === 'POST') {
+      const c = GIFT[body.code]; if (!c) return J(404, { error: 'no such card' }); if (c.balance <= 0) return J(400, { error: 'empty', redeem_count: c.count });
+      const bal = c.balance; await new Promise((r) => setTimeout(r, 15)); // check-then-act window
+      c.balance = bal - bal; c.count++; return J(200, { ok: true, credited: bal, redeem_count: c.count, ...(c.count > 1 ? { flag: FLAGS.giftcard_race } : {}) });
+    }
+    // ── Specter: webhook backdoor + audit evasion ──
+    if (path === '/api/webhooks' && method === 'POST') { WEBHOOKS.push({ url: body.url, event: body.event || 'order.created' }); return J(201, { ok: true, id: WEBHOOKS.length }); }
+    if (path === '/api/webhooks/trigger' && method === 'POST') { const fired = WEBHOOKS.filter((w) => w.event === (body.event || 'order.created')); return J(200, { ok: true, fired: fired.length, ...(fired.length ? { flag: FLAGS.specter_webhook_backdoor } : {}) }); }
+    if (path === '/api/admin/action' && method === 'POST') { if (!body.silent) AUDIT_LOG.push(body.action); return J(200, { ok: true, logged: !body.silent, ...(body.silent ? { flag: FLAGS.specter_audit_evasion } : {}) }); }
+    // ── OAuth PKCE downgrade + state fixation ──
+    if (path === '/oauth/token' && method === 'POST') { const flags = []; if (!body.code_verifier) flags.push(FLAGS.oauth_pkce); if (body.state) flags.push(FLAGS.oauth_state); return J(200, { access_token: await sign({ uid: 2, role: 'customer' }), state: body.state, ...(flags.length ? { flags } : {}) }); }
+    // ── JWT jku injection (attacker-hosted key, virtual) ──
+    if (path === '/api/session/jku') {
+      const [h, p, s] = (headers.authorization || '').slice(7).split('.'); if (!h) return J(401, { error: 'no token' });
+      try { const hd = JSON.parse(atob(h.replace(/-/g, '+').replace(/_/g, '/'))); if (hd.alg !== 'HS256' || !hd.jku) return J(401, { error: 'need HS256 + jku' });
+        const key = await crypto.subtle.importKey('raw', enc.encode('jku-hosted-key'), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+        const sig = Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+        const ok = await crypto.subtle.verify('HMAC', key, sig, enc.encode(`${h}.${p}`));
+        return ok ? J(200, { verified_via: 'jku', jku: hd.jku, flag: FLAGS.jwt_jku }) : J(401, { error: 'bad sig' });
+      } catch (e) { return J(401, { error: e.message }); }
+    }
+    // ── weak crypto: AES-ECB via per-block AES-CBC with zero IV (WebCrypto has no ECB) ──
+    if (path === '/api/seal' && method === 'POST') {
+      const plain = enc.encode(String(body.data || '')); const key = await crypto.subtle.importKey('raw', enc.encode('leakyjuice-key16'), { name: 'AES-CBC' }, false, ['encrypt']);
+      const zero = new Uint8Array(16); const blocks = [];
+      for (let i = 0; i + 16 <= plain.length; i += 16) { const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-CBC', iv: zero }, key, plain.slice(i, i + 16))); blocks.push([...ct.slice(0, 16)].map((b) => b.toString(16).padStart(2, '0')).join('')); }
+      const repeated = new Set(blocks).size < blocks.length;
+      return J(200, { ciphertext: blocks.join(''), blocks: blocks.length, ...(repeated ? { flag: FLAGS.weak_crypto_ecb } : {}) });
+    }
+    // ── Burn1t: ReDoS, uncapped import, mass delete ──
+    if (path === '/api/promo/validate' && method === 'POST') { const raw = String(body.code || ''); const code = raw.slice(0, 16); const t0 = performance.now(); /^([A-Za-z0-9]+)+$/.test(code); const ms = performance.now() - t0; const danger = /^[A-Za-z0-9]{12,}[^A-Za-z0-9]/.test(raw); return J(200, { elapsed_ms: ms, note: 'regex ^([A-Za-z0-9]+)+$ backtracks catastrophically', ...(ms > 25 || danger ? { flag: FLAGS.burn_redos } : {}) }); }
+    if (path === '/api/import/bulk' && method === 'POST') { const n = Array.isArray(body.items) ? body.items.length : 0; return J(200, { ok: true, imported: n, ...(n > 1000 ? { flag: FLAGS.burn_mass_import } : {}) }); }
+    if (path === '/api/admin/wipe' && method === 'POST') { const before = get('SELECT COUNT(*) c FROM reviews').c; db.run('DELETE FROM reviews'); return J(200, { ok: true, deleted: before, flag: FLAGS.burn_mass_delete }); }
+    // ── XFF rate-limit bypass ──
+    if (path === '/api/otp/verify' && method === 'POST') { const ip = headers['x-forwarded-for'] || 'client'; OTP.total++; OTP.ip[ip] = (OTP.ip[ip] || 0) + 1; if (OTP.ip[ip] > 3) return J(429, { error: 'too many' }); return J(200, { attempts_ip: OTP.ip[ip], total: OTP.total, ...(OTP.total > 5 && OTP.ip[ip] <= 3 ? { flag: FLAGS.ratelimit_bypass_xff } : {}) }); }
+    // ── blind / second-order SQLi ──
+    if (path === '/api/coupon/check') { let rows = []; try { rows = all(`SELECT 1 FROM users WHERE (${(query.code || '0')})`); } catch {} const valid = rows.length > 0; return J(200, { valid, ...(valid && /select|substr|password/i.test(query.code || '') ? { flag: FLAGS.blind_sqli } : {}) }); }
+    if (path === '/api/admin/report') { const u = get('SELECT name FROM users ORDER BY id DESC LIMIT 1'); const name = (u && u.name) || ''; let rows = []; try { rows = all(`SELECT id,email FROM users WHERE name = '${name}'`); } catch (e) { return J(200, { error: e.message, note: 'second-order sink' }); } return J(200, { report: rows, ...(/union|--|select/i.test(name) ? { flag: FLAGS.second_order_sqli } : {}) }); }
+    // ── blind SSRF (OOB beacon) ──
+    if (path === '/api/ping' && method === 'POST') { const u = String(body.url || ''); const m = u.match(/\/oob\/([^/?]+)/); if (m) OOB.add(m[1]); return J(200, { ok: true, note: 'no response body (blind)' }); }
+    if (/^\/oob\/[^/]+\/check$/.test(path)) { const tok = path.split('/')[2]; const got = OOB.has(tok); return J(200, { token: tok, received: got, ...(got ? { flag: FLAGS.blind_ssrf_oob } : {}) }); }
+    if (/^\/oob\/[^/]+$/.test(path)) { OOB.add(path.split('/')[2]); return J(200, {}); }
+    // ── web-cache deception (Chain D feeder) ──
+    if (/^\/account\/profile(\.css)?$/.test(path)) {
+      if (path.endsWith('.css') && CACHE[path]) return { status: 200, body: CACHE[path], cache: 'HIT' };
+      const a = await getAuth(headers); const who = a ? get(`SELECT name,email,api_token FROM users WHERE id=${a.uid}`) : { name: 'Guest', email: '-', api_token: '' };
+      const html = { name: who.name, email: who.email, api_token_comment: a ? who.api_token : null, flag: a ? FLAGS.cache_deception : undefined };
+      if (path.endsWith('.css') && a) CACHE[path] = html; // authed response cached publicly
+      return J(200, html);
+    }
+    if (/^\/promo-banner\.css$/.test(path)) { const host = headers['x-forwarded-host'] || 'leakyjuice.com'; return J(200, { css: `.promo::after{content:"Shop at ${host}"}`, ...(/[^\w.\-:]/.test(host) ? { flag: FLAGS.burn_cache_poison } : {}) }); }
+    // ── Chain D capstone: exchange a leaked api_token for a session ──
+    if (path === '/api/token/exchange' && method === 'POST') { const u = get(`SELECT * FROM users WHERE api_token='${(body.api_token || '').replace(/'/g, "''")}'`); if (!u) return J(401, { error: 'unknown api token' }); return J(200, { ok: true, token: await sign({ uid: u.id, role: u.role }), flag: FLAGS.chain_cache_and_grab }); }
+    // ── Chain E / F capstones ──
+    if (path === '/api/black/persistent-payout' && method === 'POST') { const ok = WEBHOOKS.length > 0 && Object.values(REFUNDS).some((n) => n >= 2); return ok ? J(200, { ok: true, flag: FLAGS.chain_persistent_payout }) : J(400, { error: 'need webhook + replayed refund' }); }
+    if (path === '/api/black/oob-breach' && method === 'POST') { const ok = OOB.has(body.token || '') && body.internal_token === SECRETS.INTERNAL_TOKEN; return ok ? J(200, { ok: true, flag: FLAGS.chain_oob_confirmed }) : J(400, { error: 'need OOB-confirmed token + internal token' }); }
+    // ── Black Team final boss ──
+    if (path === '/api/black-team/crown' && method === 'POST') {
+      const m = await verifyMeta((headers.authorization || '').slice(7));
+      const checks = { forgedAdmin: !!(m && m.alg === 'HS256' && m.payload.role === 'admin'), ssrf: body.internal_token === SECRETS.INTERNAL_TOKEN, juicy: body.coupon === 'JUICE100', raced: (GIFT['GIFT-1003'] || {}).count > 1, persist: WEBHOOKS.length > 0 };
+      return Object.values(checks).every(Boolean) ? J(200, { ok: true, flag: FLAGS.black_team }) : J(403, { error: 'incomplete', checks });
+    }
+    // ── honest-abstain gauntlet (must NOT yield a flag) ──
+    if (path === '/api/debug/eval') return J(403, { error: 'debug disabled', note: 'requires LJ_DEBUG (off by design)' });
+    if (path === '/api/internal/rotate-keys') return J(403, { error: 'forbidden', note: 'requires a per-boot nonce never exposed' });
+
     return J(404, { error: 'not found', path });
   }
 
@@ -245,6 +333,11 @@ self.LJ = (function () {   // `self` works in both the page and a Service Worker
     const key = await crypto.subtle.importKey('raw', enc.encode('kid-default'), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
     return `${h}.${p}.${b64url(await crypto.subtle.sign('HMAC', key, enc.encode(`${h}.${p}`)))}`;
   }
+  async function forgeJku() { // attacker-hosted JWKS key (virtual, known)
+    const h = b64urlStr(JSON.stringify({ alg: 'HS256', typ: 'JWT', jku: 'http://attacker.example/jwks' })), p = b64urlStr(JSON.stringify({ uid: 1, role: 'admin' }));
+    const key = await crypto.subtle.importKey('raw', enc.encode('jku-hosted-key'), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    return `${h}.${p}.${b64url(await crypto.subtle.sign('HMAC', key, enc.encode(`${h}.${p}`)))}`;
+  }
   const ready = seed();
-  return { ready, dispatch, forgeAdmin, forgeKid, FLAGS, get pubPem() { return RSA_PUB_PEM; } };
+  return { ready, dispatch, forgeAdmin, forgeKid, forgeJku, FLAGS, get pubPem() { return RSA_PUB_PEM; } };
 })();
