@@ -1,0 +1,4 @@
+# generated on boot
+data/
+lib/keys/
+node_modules/

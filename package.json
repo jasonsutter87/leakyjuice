@@ -1,0 +1,14 @@
+{
+  "name": "leakyjuice",
+  "version": "1.0.0",
+  "description": "LeakyJuice — a friendly-looking gadget shop that leaks on purpose. Flagship vulnerable target in the JUSICContainer training range. Zero dependencies; built-in node:sqlite.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node --experimental-sqlite --no-warnings server.js",
+    "reset": "curl -s -X POST http://localhost:4060/__reset && echo"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}
