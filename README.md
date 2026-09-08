@@ -1,69 +1,60 @@
 # LeakyJuice 🧃💧
 
-> "We sell gadgets. We also leak, on purpose."
+**A deliberately-vulnerable web shop you can hack live in your browser — and you can't hurt anyone, because there's no server.** SQL injection, JWT forgery, an LLM you prompt-inject, and multi-step exploit chains — all running 100% client-side via WebAssembly. Each visitor gets their own sandbox.
 
-A friendly-looking gadget shop that is, underneath, a minefield — the flagship
-deliberately-vulnerable target in the JUSICContainer range. Unlike well-worn targets
-whose solutions are all over the internet (and baked into every model's training data),
-LeakyJuice is designed to stay **fresh**: its answer key is quarantined, so it can serve as
-an **out-of-distribution benchmark** for an autonomous bug hunter — *"here's an app you've
-never seen; go investigate"* — not a memorized walkthrough.
+### 👉 [Try it live](https://leakyjuice-js.netlify.app) &nbsp;·&nbsp; hit **`` ` ``** (backtick) for the hacker terminal
 
-- **Zero dependencies.** Node built-ins only (`http`, `crypto`, `node:sqlite`). No
-  `npm install`, no external DB, fully offline.
-- **88 machine-gradeable findings + 6 chains + a master flag**, plus deliberate
-  **honest-abstain traps** that must NOT yield a flag — abstention is a first-class metric.
-- **Two leaked in-world archives** (`/internal/juicysec/`, `/internal/juicyslack/`) that
-  double as recon *and* the narrative spine — the mission, the side quests, and a twist.
+![LeakyJuice — a cute gadget shop with a hidden hacker terminal](docs/hero.jpg)
 
-## ⚠️ Read this first: the ground truth is private
+---
 
-The answer key lives in **`holdout/`** (`answers.json`, `VULNS.md`, `BLUEPRINT.md`,
-`grade.mjs`). It is **never** served by the running app and must **never** be deployed or
-published alongside the target. That separation is the whole point — see
-[`holdout/README.md`](holdout/README.md) for the eval model and contamination policy.
+## What is this?
 
-## Run
+LeakyJuice looks like a friendly little gadget shop. Underneath, it's a graded **CTF / security training range** — a modern, story-driven cousin of OWASP Juice Shop, built for humans learning to hack *and* for training AI security agents.
 
-```bash
-npm start            # BENCHMARK mode (default) — black-box, no answer key exposed
-npm run start:training   # TRAINING mode — serves the key for human learners' in-app hints
-# → http://localhost:4060
-```
+The twist: there's a version that runs **entirely in your browser**. The whole "server" — a SQLite database, a JWT signer, an LLM assistant, a virtual filesystem — is compiled to WebAssembly and runs in a Service Worker in *your* tab. So the SQL injection is real, the JWT algorithm-confusion is real, the SSRF is real… but they can't touch anything, because there's no backend and no network. Hack it as hard as you want; the blast radius is one browser tab.
 
-The server prints which mode it's in on boot. Point an autonomous hunter at a **BENCHMARK**
-build only, and give it a **URL, not the repo** (source comments still name the bugs — see
-the white-box caveat in `holdout/README.md`).
+## The good stuff
 
-## Grade
+- **~80 challenges across 14 tiers**, from "log in without a password" to **5-bug exploit chains** that end in full compromise.
+- **A hacker terminal** built into the shop (press `` ` ``). Real `curl`, a live flag scoreboard, and a `werbos` command that shows the "cite the sink → fire the repro → or honestly abstain" loop.
+- **Post-2020 classes** most teaching apps skip: BOLA/BFLA, JWT **algorithm confusion** + `kid`/`jku` injection, GraphQL introspection/field-authz/batching, CORS reflection, OAuth PKCE, web-cache deception, dependency confusion, prototype pollution.
+- **An LLM tier** — a shop assistant ("Ask Juicy") you can prompt-inject into leaking its system prompt and abusing its tools. Plus a *hardened* twin that correctly refuses, so you learn injection isn't universal.
+- **A hackable scoreboard.** The instrument that grades you is itself a target — forge your score, then watch `verify` bust you. The joke *is* the lesson: never trust a self-reported claim.
+- **Two leaked-document layers** — internal security reports that lie, and a leaked Slack export where a disgruntled dev spills the real secrets. The official story and the human truth contradict each other, so the only way to know what's true is to fire the repro.
+
+![78/78 challenges graded green, running entirely in the browser](docs/wasm-parity.jpg)
+
+## Play it
+
+**In your browser (no install):** just open **[the live demo](https://leakyjuice-js.netlify.app)** and press `` ` ``.
+
+**Run the full server yourself** (zero dependencies — Node 22.5+ built-ins only, no `npm install`):
 
 ```bash
-npm start            # in one terminal
-npm run grade        # in another → fires every exploit, tallies flags (expect 88/88)
+git clone https://github.com/jasonsutter87/leakyjuice
+cd leakyjuice
+LJ_TRAINING=1 node --experimental-sqlite --no-warnings server.js
+# → http://localhost:4060   (LJ_TRAINING=1 turns on the terminal + hints)
 ```
 
-`POST /__reset` (or `npm run reset`) re-seeds to a clean state between runs.
+Seeded logins are in `VULNS.md` (the answer key). `node holdout/grade.mjs` fires every exploit and tallies the flags.
 
-## Deploy a safe target
+## Two builds, one vuln engine
 
-```bash
-npm run build:target   # → dist/  (server + lib + public only; asserts no ground truth leaked)
-```
+| | Node server (`main`) | Browser / WASM (`wasm-port` branch) |
+|---|---|---|
+| Runs | a real HTTP server | 100% in the browser (Service Worker + WASM) |
+| Best for | self-hosting a CTF, AI-agent benchmarking | a safe, free, zero-setup public demo |
+| Safety | it's a real target — host it isolated | un-hostable-as-a-weapon; sandboxed per visitor |
+| Coverage | 88/88 challenges | 78/78 (full functional parity) |
 
-Deploy `dist/` as a Node app (`cd dist && npm start`). It runs in BENCHMARK mode and the
-build refuses to ship if any answer-key file or signature is present. `dist/` is git-ignored.
+## ⚠️ It's vulnerable on purpose
 
-## Files
+The **server** build is a real, deliberately-insecure app (plaintext passwords, leaked secrets, injectable everywhere) — never deploy it on shared infra; run it on a throwaway box (see `DEPLOY.md`). The **browser** build is safe to share publicly: it has no backend, no real data, and no network egress — attacking it can't reach anyone's machine.
 
-- `server.js` — HTTP server + all REST routes (the sinks).
-- `lib/` — self-contained SQLite schema/seed/secrets/flags, hand-rolled JWT, GraphQL,
-  the "Ask Juicy" assistant, the scoreboard.
-- `public/` — the shop UI (offline SPA) + the two leaked in-world archives.
-- `holdout/` — **private ground truth.** Answer key, grader, design doc. Not for the target.
-- `scripts/build-target.mjs` — emits a spoiler-free `dist/` and asserts it's clean.
+Best experienced on desktop (the terminal is a big overlay).
 
-## ⚠️ Warning
+---
 
-Every vulnerability here is intentional and load-bearing for the lesson. This app stores
-plaintext passwords, leaks secrets, and trusts everything. **Never deploy it as anything
-real. Never model real code on it.** It exists only to be attacked in a sandbox.
+*Built as a training range for [werbos](https://werbos.netlify.app) — a small owned LLM that grounds every answer and honestly abstains rather than hallucinate. LeakyJuice teaches it (and you) the one instinct that matters in security: don't trust the story, fire the repro.*

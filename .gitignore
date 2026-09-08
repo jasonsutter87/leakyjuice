@@ -19,3 +19,4 @@ internal/juicysec/
 internal/juicyslack/
 *.slack-export.json
 .DS_Store
+.netlify/
