@@ -256,6 +256,12 @@ const server = http.createServer(async (req, res) => {
     // live-cred proof: a service token pasted in Slack (eng-general 2026-08-21) still authenticates
     if (p === '/api/slack/token-replay' && method === 'POST') return slackTokenReplay(req, res);
     if (p === '/app.js.map') return sourcemap(req, res);
+    // TRAINING ONLY: the hacker terminal is a human learning affordance. In BENCHMARK
+    // mode (default, black-box) it is not served at all — the storefront stays innocent.
+    if (p === '/hack.js') {
+      if (!TRAINING) return send(res, 200, '/* LeakyJuice terminal: available in TRAINING mode only (LJ_TRAINING=1) */\n', { 'content-type': 'text/javascript; charset=utf-8' });
+      return serveStatic(res, PUBLIC, '/hack.js');
+    }
     // TRAINING ONLY: the answer key is served for human learners' hint commands.
     // In BENCHMARK mode (default) this route does not exist → /answers.json 404s.
     if (TRAINING && p === '/answers.json' && method === 'GET') return serveStatic(res, HOLDOUT, '/answers.json');
