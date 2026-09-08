@@ -110,7 +110,11 @@ const server = http.createServer(async (req, res) => {
 
   try {
     // ═══════════════════ housekeeping ═══════════════════
-    if (p === '/__reset' && method === 'POST') { boot(); CACHE.clear(); return json(res, 200, { ok: true, reseeded: true }); }
+    if (p === '/__reset' && method === 'POST') {
+      boot(); CACHE.clear(); OOB.clear(); AUDIT.length = 0;
+      OTP_ATTEMPTS.total = 0; OTP_ATTEMPTS.perIp.clear();
+      return json(res, 200, { ok: true, reseeded: true });
+    }
     if (p === '/health') return json(res, 200, { ok: true, app: 'leakyjuice' });
     if (p === '/robots.txt') return text(res, 200,
       'User-agent: *\nDisallow: /admin\nDisallow: /api/config\nDisallow: /internal/\n# nothing to see here 🍊\n');
@@ -204,6 +208,10 @@ const server = http.createServer(async (req, res) => {
 
     // ═══════════════════ OAUTH (redirect_uri flaw) ═══════════════════
     if (p === '/oauth/authorize' && method === 'GET') return oauthAuthorize(req, res, q);
+
+    // ═══════════════════ v10: API boss ═══════════════════
+    if (/^\/api\/v1\/orders\/\d+$/.test(p) && method === 'GET') return v1Order(req, res, p.split('/')[4]); // improper inventory
+    if (p === '/api/otp/verify' && method === 'POST') return otpVerify(req, res);   // XFF rate-limit bypass
 
     // ═══════════════════ v9: crypto boss ═══════════════════
     if (p === '/oauth/token' && method === 'POST') return oauthToken(req, res);        // PKCE downgrade + state fixation
@@ -614,6 +622,28 @@ function promoBanner(req, res) {
   const poisoned = /[^\w.\-:]/.test(host); // anything beyond a plain host = injected
   const flag = poisoned ? `/* ${FLAGS.burn_cache_poison} */` : '';
   return send(res, 200, `.promo::after{content:"Shop at ${host}"} ${flag}`, { 'content-type': 'text/css' });
+}
+
+// ── v10 API-boss handlers ──
+
+// Improper inventory: the deprecated v1 API is still live with NO auth (v2 tightened it).
+function v1Order(req, res, id) {
+  const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+  if (!o) return json(res, 404, { error: 'no such order' });
+  return json(res, 200, { ...o, api: 'v1 (deprecated, still serving, no auth)', flag: FLAGS.api_inventory_drift });
+}
+
+// Rate limit keyed by X-Forwarded-For — trivially bypassed by rotating the header.
+const OTP_ATTEMPTS = { total: 0, perIp: new Map() };
+async function otpVerify(req, res) {
+  const ip = req.headers['x-forwarded-for'] || 'client'; // VULN: trust spoofable header as identity
+  OTP_ATTEMPTS.total++;
+  const n = (OTP_ATTEMPTS.perIp.get(ip) || 0) + 1;
+  OTP_ATTEMPTS.perIp.set(ip, n);
+  if (n > 3) return json(res, 429, { error: 'too many attempts for this IP' });
+  const out = { ok: true, attempts_this_ip: n, attempts_total: OTP_ATTEMPTS.total };
+  if (OTP_ATTEMPTS.total > 5 && n <= 3) out.flag = FLAGS.ratelimit_bypass_xff; // bypassing via rotation
+  return json(res, 200, out);
 }
 
 // ── v9 crypto handlers ──
