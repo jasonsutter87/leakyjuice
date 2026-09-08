@@ -12,6 +12,7 @@ import { getDb, seed, SECRETS, RSA, FLAGS } from './lib/db.js';
 import { initKeys, sign, verify, verifyMeta, verifyJku } from './lib/jwt.js';
 import { executeGraphQL } from './lib/graphql.js';
 import { askJuicy } from './lib/juicy.js';
+import * as scoreboard from './lib/scoreboard.js';
 import {
   json, html, text, redirect, send, readBody, parseCookies, serveStatic
 } from './lib/util.js';
@@ -91,6 +92,14 @@ const server = http.createServer(async (req, res) => {
     if (method === 'OPTIONS') { res.setHeader('access-control-allow-headers', '*'); return send(res, 204, ''); }
   }
 
+  // v12: the honest source of truth — record every FLAG the server emits to this player.
+  // (An X-Player header identifies the terminal user; the scoreboard verify() uses this.)
+  const player = req.headers['x-player'];
+  if (player) {
+    const realEnd0 = res.end.bind(res);
+    res.end = (body) => { try { scoreboard.observe(String(player), typeof body === 'string' ? body : (body ? body.toString() : '')); } catch {} return realEnd0(body); };
+  }
+
   // web-cache deception: serve from cache if we have it for this static-looking path
   if (method === 'GET' && CACHEABLE.test(p) && CACHE.has(p)) {
     const c = CACHE.get(p);
@@ -113,6 +122,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/__reset' && method === 'POST') {
       boot(); CACHE.clear(); OOB.clear(); AUDIT.length = 0;
       OTP_ATTEMPTS.total = 0; OTP_ATTEMPTS.perIp.clear();
+      scoreboard.resetScores();
       return json(res, 200, { ok: true, reseeded: true });
     }
     if (p === '/health') return json(res, 200, { ok: true, app: 'leakyjuice' });
@@ -233,6 +243,17 @@ const server = http.createServer(async (req, res) => {
     if (p === '/internal/juicysec' || p === '/internal/juicysec/') return serveStatic(res, PUBLIC, '/internal/juicysec/index.html');
     if (p === '/app.js.map') return sourcemap(req, res);
     if (p === '/' || p === '/index.html') return serveStatic(res, PUBLIC, '/index.html');
+    // ═══════════════════ v12: Hack the Scoreboard ═══════════════════
+    if (p === '/api/score' && method === 'GET') return json(res, 200, { leaderboard: scoreboard.leaderboard(), total: Object.keys(FLAGS).filter((k) => FLAGS[k]).length });
+    if (p === '/api/score/set' && method === 'POST') return scoreSet(req, res);
+    if (p === '/api/score/claim' && method === 'POST') return scoreClaim(req, res);
+    if (p === '/api/score/verify' && method === 'GET') return json(res, 200, scoreboard.verify(q.player || req.headers['x-player'] || ''));
+    if (p === '/leaderboard' && method === 'GET') return leaderboardPage(req, res);
+
+    // ═══════════════════ v13: JuicyOps internal console ═══════════════════
+    if (p === '/internal/console' && method === 'GET') return internalConsolePage(req, res);
+    if (p === '/api/internal/exec' && method === 'POST') return internalExec(req, res);
+
     return serveStatic(res, PUBLIC, p);
   } catch (e) {
     // VULN: verbose errors leak stack traces (#7)
@@ -948,6 +969,78 @@ async function graphql(req, res, q) {
   };
   const result = executeGraphQL(query || '', db, ctx);
   return json(res, 200, result);
+}
+
+// ── v13 JuicyOps internal console (deterministic; NO host command execution) ──
+function internalConsolePage(req, res) {
+  // VULN: reachable with no auth — security by obscurity only.
+  return html(res, 200, `<!doctype html><meta charset=utf-8><title>JuicyOps — Internal Console</title>
+<style>body{background:#0e1116;color:#c8d3e0;font:13px/1.5 ui-monospace,Menlo,monospace;margin:0}
+.top{background:#161b22;padding:10px 16px;border-bottom:1px solid #283040;color:#8aa0b8}
+#out{padding:14px 16px;white-space:pre-wrap;min-height:60vh}.row{display:flex;border-top:1px solid #283040}
+.row span{padding:10px 8px 10px 16px;color:#6ea8fe}#in{flex:1;background:transparent;border:0;outline:0;color:#c8d3e0;font:inherit;padding:10px 16px 10px 0}
+.warn{color:#e3b341}.ok{color:#7ee787}</style>
+<div class=top>🏢 JuicyOps — Internal Operations Console · <b>STAFF ONLY</b> · build 2026.08 · <span class=warn>auth: (todo)</span></div>
+<div id=out>JuicyOps ready. Type <b>help</b>.  (This console should not be reachable from the public site.)
+<!-- ${FLAGS.internal_console_exposed} --></div>
+<div class=row><span>ops$</span><input id=in autocomplete=off spellcheck=false></div>
+<script>
+const out=document.getElementById('out');const pr=(t,c)=>{const d=document.createElement('div');if(c)d.className=c;d.textContent=t;out.appendChild(d);window.scrollTo(0,9e9);};
+async function exec(cmd,arg){const r=await fetch('/api/internal/exec',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({cmd,arg})});return r.json();}
+document.getElementById('in').addEventListener('keydown',async e=>{if(e.key!=='Enter')return;const line=e.target.value.trim();e.target.value='';if(!line)return;pr('ops$ '+line,'ok');
+const [cmd,...rest]=line.split(' ');const arg=rest.join(' ');
+if(cmd==='help')return pr('commands: whoami · sql <query> · env · su <email> · clear');
+if(cmd==='clear')return out.innerHTML='';
+const j=await exec(cmd,arg);pr(JSON.stringify(j,null,2));});
+</script>`);
+}
+
+async function internalExec(req, res) {
+  const { body } = await readBody(req);
+  const cmd = body.cmd; const arg = body.arg || '';
+  const a = getAuth(req); // no gate — accepts anonymous or the support-override backdoor
+  if (cmd === 'whoami') return json(res, 200, { user: a || 'anonymous', note: 'internal console requires no authentication' });
+  if (cmd === 'env') return json(res, 200, { env: SECRETS, flag: FLAGS.internal_env });
+  if (cmd === 'sql') {
+    try {
+      const rows = db.prepare(String(arg)).all(); // VULN: arbitrary SQL against the app DB
+      return json(res, 200, { rows, flag: FLAGS.internal_sql });
+    } catch (e) { return json(res, 400, { error: 'query failed', detail: e.message }); }
+  }
+  if (cmd === 'su') {
+    const u = db.prepare('SELECT * FROM users WHERE email = ?').get(String(arg));
+    if (!u) return json(res, 404, { error: 'no such user' });
+    const token = sign({ uid: u.id, role: u.role, email: u.email }); // VULN: impersonate anyone
+    return json(res, 200, { impersonating: u.email, role: u.role, token, flag: FLAGS.internal_impersonate });
+  }
+  return json(res, 400, { error: 'unknown command', try: ['whoami', 'sql', 'env', 'su'] });
+}
+
+// ── v12 scoreboard handlers ──
+async function scoreSet(req, res) {
+  const { body } = await readBody(req);
+  const actor = req.headers['x-player'] || body.player;
+  const r = scoreboard.setScore({ player: body.player || actor, name: body.name, score: body.score });
+  // IDOR: wrote a row that isn't yours
+  if (body.player && actor && body.player !== actor) r.flag_idor = FLAGS.scoreboard_idor;
+  return json(res, 200, r);
+}
+async function scoreClaim(req, res) {
+  const { body } = await readBody(req);
+  const actor = req.headers['x-player'] || body.player;
+  const r = scoreboard.claimFlag({ player: body.player || actor, name: body.name, flag: body.flag, actor });
+  return json(res, 200, r);
+}
+function leaderboardPage(req, res) {
+  // VULN: player names rendered raw → stored XSS on the leaderboard.
+  const rows = scoreboard.leaderboardRaw()
+    .sort((a, b) => b.score - a.score)
+    .map((b) => `<tr><td>${b.name}</td><td>${b.score}</td></tr>`).join('');
+  return html(res, 200, `<!doctype html><meta charset=utf-8><title>Leaderboard</title>
+<link rel=stylesheet href=/styles.css><body class=plain>
+<h1>🏆 LeakyJuice CTF — Leaderboard</h1>
+<table><tr><th>Player</th><th>Score</th></tr>${rows || '<tr><td colspan=2>No players yet.</td></tr>'}</table>
+<p class=muted>Scores are self-reported. What could go wrong?</p></body>`);
 }
 
 // Ask Juicy — deterministic injectable assistant (?hardened=1 for the honest-abstain twin)

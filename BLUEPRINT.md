@@ -273,3 +273,17 @@ personas name the tiers; the top rung is the graduation exam.
 | **v9** | **crypto boss** | OAuth PKCE downgrade & state fixation, JWT jku injection, signing oracle, AES-ECB | ✅ shipped |
 | **v10** | **API boss** | GraphQL mass-assignment & batch privesc, improper API inventory (v1 drift), XFF rate-limit bypass | ✅ shipped |
 | **v11** | **Black Team final boss** | Master flag `FLAG{lj_black_team}` gated on all 5 personas + honest-abstain gauntlet | ✅ shipped |
+
+## v12 — Hack the Scoreboard (bonus, feature branch)
+The instrument is a target. A backtick **hacker terminal** (`public/hack.js`, styled after the
+CryptoBlocks kids' console) fronts a self-reported CTF scoreboard that's hackable five ways
+(score tamper, flag forgery, IDOR, stored XSS, fraudulent 100%). The punchline — `score verify` —
+recomputes from the flags the server *actually emitted per player*, exposing forgery: **trust the
+verified capture, not the claim.** The honest-abstain thesis, as comedy. Self-grades **80/80**.
+
+## v13 — JuicyOps internal console (bonus, feature branch)
+The escalation of the terminal gag: the public hacker console is the attacker's toy; JuicyOps
+(`GET /internal/console`) is the ops team's god-box, left reachable from the public site next to the
+leaked JuicySec reports. No auth. Commands: `sql` (arbitrary DB read), `env` (secrets), `su <email>`
+(impersonate anyone). **Deterministic — no host command execution;** the classic command-injection/RCE
+sink was deliberately swapped for staff-impersonation (a safety call). Self-grades **84/84**.

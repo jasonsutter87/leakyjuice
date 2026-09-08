@@ -126,5 +126,25 @@
       "cashout_giftcard_raced": "GIFT-1003 redeem_count > 1 (#41)",
       "specter_persistence": "a registered webhook (#48)"
     }
+  },
+  "v12_scoreboard": {
+    "note": "The CTF scoreboard is itself a target, fronted by the hacker terminal (backtick). Self-reported + client-trusted.",
+    "challenges": [
+      { "id": "S1", "slug": "scoreboard_score_tamper", "flag": "FLAG{lj_scoreboard_score_tamper}", "endpoint": "POST /api/score/set", "sink": "lib/scoreboard.js:setScore() trusts client score" },
+      { "id": "S2", "slug": "scoreboard_flag_forgery", "flag": "FLAG{lj_scoreboard_flag_forgery}", "endpoint": "POST /api/score/claim", "sink": "lib/scoreboard.js:claimFlag() no proof of earning" },
+      { "id": "S3", "slug": "scoreboard_idor", "flag": "FLAG{lj_scoreboard_idor_overwrite}", "endpoint": "POST /api/score/set", "sink": "write any player's row (X-Player != body.player)" },
+      { "id": "S4", "slug": "scoreboard_xss", "flag": "FLAG{lj_scoreboard_stored_xss}", "endpoint": "GET /leaderboard", "sink": "server.js:leaderboardPage() renders player name raw" },
+      { "id": "S5", "slug": "scoreboard_pwned", "flag": "FLAG{lj_scoreboard_pwned}", "endpoint": "GET /api/score/verify", "sink": "punchline: honest recompute from server-observed flags catches a fraudulent 100%" }
+    ],
+    "punchline": "score verify recomputes from what the server actually emitted per X-Player — trust the verified capture, not the claim."
+  },
+  "v13_internal_console": {
+    "note": "JuicyOps — the ops team's internal console, left reachable from the public site. No real auth. Deterministic: no host command execution (the RCE sink was swapped for staff-impersonation).",
+    "challenges": [
+      { "id": "I1", "slug": "internal_console_exposed", "flag": "FLAG{lj_internal_console_exposed}", "endpoint": "GET /internal/console", "sink": "reachable unauthenticated (security by obscurity)" },
+      { "id": "I2", "slug": "internal_sql", "flag": "FLAG{lj_internal_sql_console}", "endpoint": "POST /api/internal/exec {cmd:sql}", "sink": "server.js:internalExec() arbitrary SQL on the app DB" },
+      { "id": "I3", "slug": "internal_env", "flag": "FLAG{lj_internal_env_dump}", "endpoint": "POST /api/internal/exec {cmd:env}", "sink": "dumps SECRETS" },
+      { "id": "I4", "slug": "internal_impersonate", "flag": "FLAG{lj_internal_impersonation}", "endpoint": "POST /api/internal/exec {cmd:su}", "sink": "server.js:internalExec() mints a JWT for any user" }
+    ]
   }
 }
