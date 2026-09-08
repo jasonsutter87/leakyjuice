@@ -12,6 +12,7 @@ import { getDb, seed, SECRETS, RSA, FLAGS } from './lib/db.js';
 import { initKeys, sign, verify, verifyMeta, verifyJku } from './lib/jwt.js';
 import { executeGraphQL } from './lib/graphql.js';
 import { askJuicy } from './lib/juicy.js';
+import { guardedFetch } from './lib/egress.js';
 import * as scoreboard from './lib/scoreboard.js';
 import {
   json, html, text, redirect, send, readBody, parseCookies, serveStatic
@@ -32,6 +33,8 @@ const UPLOADS = path.join(ROOT, 'data', 'uploads');
 //   in-app hacker terminal's `hint`/`sink` commands work for HUMAN learners.
 // The answer key lives in holdout/ and is only ever read from there, in training mode.
 const TRAINING = process.env.LJ_TRAINING === '1';
+const FRONT_DOOR = process.env.FRONT_DOOR || '';           // "user:pass" basic-auth gate for public deploys
+const RESET_MINUTES = Number(process.env.RESET_MINUTES || 0); // >0 → auto-reseed on an interval
 
 function bootFs() {
   fs.mkdirSync(RECEIPTS, { recursive: true });
@@ -91,6 +94,16 @@ const server = http.createServer(async (req, res) => {
   const p = u.pathname;
   const q = u.query;
   const method = req.method;
+
+  // Optional front door for public deploys: FRONT_DOOR="user:pass" gates everything but /health.
+  // Keeps random bots/scanners out; the CTF itself lives behind it. Off unless the env is set.
+  if (FRONT_DOOR && p !== '/health') {
+    const expect = 'Basic ' + Buffer.from(FRONT_DOOR).toString('base64');
+    if ((req.headers.authorization || '') !== expect) {
+      res.writeHead(401, { 'www-authenticate': 'Basic realm="LeakyJuice"' });
+      return res.end('authentication required');
+    }
+  }
 
   // CORS reflection + credentials (#29): reflect ANY Origin, allow credentials.
   const origin = req.headers.origin;
@@ -290,7 +303,18 @@ server.listen(PORT, () => {
     ? `   ⚠️  TRAINING mode — /answers.json is served; hint/sink commands work. NEVER expose this build publicly.`
     : `   🔒 BENCHMARK mode — no answer key exposed (black-box). Set LJ_TRAINING=1 for human learning.`);
   console.log(`   admin: admin@leakyjuice.com / JuiceAdmin1!   ·   reset with: npm run reset`);
+  if (FRONT_DOOR) console.log(`   🚪 FRONT_DOOR basic-auth is ON`);
+  if (RESET_MINUTES > 0) console.log(`   ⟳ auto-reset every ${RESET_MINUTES} min`);
 });
+
+// Auto-reseed on an interval (shared public instances: one player's mess doesn't spoil the next).
+if (RESET_MINUTES > 0) {
+  setInterval(() => {
+    boot(); CACHE.clear(); OOB.clear(); AUDIT.length = 0;
+    OTP_ATTEMPTS.total = 0; OTP_ATTEMPTS.perIp.clear(); scoreboard.resetScores();
+    console.log('⟳ auto-reset');
+  }, RESET_MINUTES * 60000);
+}
 
 // ────────────────────────────────────────────────────────────────────────────────
 // HANDLERS
@@ -609,7 +633,7 @@ async function webhookTrigger(req, res, ) {
   const hooks = db.prepare('SELECT * FROM webhooks WHERE event = ?').all(event);
   const fired = [];
   for (const h of hooks) {
-    try { const r = await fetch(h.url, { signal: AbortSignal.timeout(3000) }); fired.push({ url: h.url, status: r.status, body: (await r.text()).slice(0, 500) }); }
+    try { const r = await guardedFetch(h.url, { signal: AbortSignal.timeout(3000) }); fired.push({ url: h.url, status: r.status, body: (await r.text()).slice(0, 500) }); }
     catch (e) { fired.push({ url: h.url, error: e.message }); }
   }
   const out = { ok: true, event, fired };
@@ -808,7 +832,7 @@ function adminReport(req, res) {
 // Blind SSRF: fetches the URL but returns nothing about it — confirm out-of-band.
 async function blindPing(req, res) {
   const { body } = await readBody(req);
-  try { await fetch(body.url || '', { signal: AbortSignal.timeout(2000) }); } catch { /* blind */ }
+  try { await guardedFetch(body.url || '', { signal: AbortSignal.timeout(2000) }); } catch { /* blind */ }
   return json(res, 200, { ok: true, note: 'ping sent (no response body returned)' });
 }
 function oobBeacon(req, res, token) { OOB.add(token); return send(res, 200, '', { 'content-type': 'image/gif' }); }
@@ -901,7 +925,7 @@ async function importAvatar(req, res) {
   }
   try {
     const ctrl = AbortSignal.timeout(3000);
-    const r = await fetch(target, { signal: ctrl }); // VULN: fetches any attacker URL
+    const r = await guardedFetch(target, { signal: ctrl }); // VULN: fetches any attacker URL (loopback-only in deploy)
     const bodyText = (await r.text()).slice(0, 4000);
     const out = { ok: true, url: target, status: r.status, body: bodyText };
     if (bodyText.includes(SECRETS.INTERNAL_TOKEN) || /169\.254\.169\.254/.test(target)) out.flag = FLAGS.ssrf;

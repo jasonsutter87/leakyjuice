@@ -1,0 +1,24 @@
+# LeakyJuice — hardened single-container deploy.
+#   docker compose up --build
+# Public CTF? Uncomment FRONT_DOOR and RESET_MINUTES below.
+services:
+  leakyjuice:
+    build: .
+    ports:
+      - "4060:4060"
+    environment:
+      # BENCHMARK mode (default). NEVER set LJ_TRAINING=1 in public — it serves the answer key.
+      # Egress guard is loopback-only by default. NEVER set EGRESS=open in public.
+      # FRONT_DOOR: "ctf:choose-a-password"   # basic-auth gate over the whole site
+      # RESET_MINUTES: "30"                    # auto-reseed so one player's mess doesn't spoil the next
+      PORT: "4060"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    # The app writes seed files to data/ and lib/keys/ at boot, so the root FS isn't read-only,
+    # but nothing here should ever touch the host. Keep this on a throwaway, egress-restricted box.

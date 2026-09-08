@@ -1,0 +1,20 @@
+# NEVER ship the answer key or grader into the deployed image
+holdout/
+# dev/junk
+.git/
+.gitignore
+.DS_Store
+*.log
+data/
+lib/keys/
+node_modules/
+LeakyJuIce.html
+scratch/
+Dockerfile
+docker-compose.yml
+DEPLOY.md
+BLUEPRINT.md
+VULNS.md
+answers.json
+grade.mjs
+README.md
