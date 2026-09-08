@@ -27,6 +27,7 @@
     <div class="tt-line"><span class="tt-prompt">juice@leaky:~$</span><input id="tt-in" autocomplete="off" spellcheck="false"></div>`;
   const style = document.createElement('style');
   style.textContent = `
+  #ljterm[hidden]{display:none!important}
   #ljterm{position:fixed;left:0;right:0;top:0;z-index:9999;height:60vh;display:flex;flex-direction:column;
     background:rgba(6,10,8,.96);color:var(--tt,#39ff14);font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;
     box-shadow:0 20px 60px rgba(0,0,0,.6);border-bottom:1px solid #1d3a1d;text-shadow:0 0 6px rgba(57,255,20,.25)}
