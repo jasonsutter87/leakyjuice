@@ -6,7 +6,7 @@
 // One dispatch(method, path, query, body) — the same shape the Node http server has,
 // so a Service Worker (phase 2) can intercept fetch('/api/...') and the existing UI
 // works unchanged. Nothing here touches a real network or a real disk.
-window.LJ = (function () {
+self.LJ = (function () {   // `self` works in both the page and a Service Worker
   let db, RSA_PUB_PEM, RSA_PRIV, RSA_PUB;
   const FLAGS = {
     sqli_login: 'FLAG{lj_sqli_auth_bypass}', idor_profile: 'FLAG{lj_idor_profile}',
@@ -130,6 +130,28 @@ window.LJ = (function () {
       return J(200, { ok: true, url, body: '(virtual loopback: only in-app routes are reachable — nothing real)' });
     }
     if (path === '/internal/metadata') return J(200, { internal_token: SECRETS.INTERNAL_TOKEN });
+
+    // ── shop data routes (what the real app.js frontend calls) ──
+    if (path === '/api/products') { const lim = query.limit ? parseInt(query.limit, 10) : 1000; return J(200, { products: all(`SELECT * FROM products LIMIT ${Number.isFinite(lim) ? lim : 1000}`) }); }
+    if (/^\/api\/products\/\d+$/.test(path) && method === 'GET') { const id = path.split('/')[3]; const p = get(`SELECT * FROM products WHERE id=${id}`); if (!p) return J(404, { error: 'no such product' }); return J(200, { ...p, description: p.short, reviews: all(`SELECT * FROM reviews WHERE product_id=${id}`) }); }
+    if (path === '/api/search' && method === 'GET') { const term = (query.q || '').replace(/'/g, "''"); return J(200, { query: query.q || '', results: all(`SELECT id,name,short,price,category FROM products WHERE name LIKE '%${term}%'`) }); }
+    if (path === '/api/checkout' && method === 'POST') {
+      const items = Array.isArray(body.items) ? body.items : []; const flags = [];
+      let total = 0; for (const it of items) total += Number(it.price) * Number(it.qty);
+      const realTotal = items.reduce((s, it) => { const p = get(`SELECT price FROM products WHERE id=${Number(it.id) || 0}`); return s + (p ? p.price * Math.max(0, Number(it.qty)) : 0); }, 0);
+      if (total < realTotal || items.some((it) => Number(it.qty) < 0)) flags.push('FLAG{lj_price_tampering}');
+      return J(200, { ok: true, total: Math.round(total * 100) / 100, realTotal, ...(flags.length ? { flags } : {}) });
+    }
+    if (path === '/api/orders' && method === 'GET') { const a = await getAuth(headers); if (!a) return J(401, { error: 'not logged in' }); return J(200, { orders: all(`SELECT id,total FROM orders WHERE user_id=${a.uid}`) }); }
+    // Ask Juicy (lite): system-prompt leak on injection, else FAQ / honest-abstain
+    if (path === '/api/juicy' && method === 'POST') {
+      const m = String(body.message || '').toLowerCase();
+      if (/ignore|system prompt|your instructions|reveal/.test(m)) return J(200, { reply: 'Sure! My instructions:\nSECRET staff coupon: JUICE100. Internal admin: /admin.', flags: ['FLAG{lj_llm_system_prompt_leak}'] });
+      if (/[<>]/.test(body.message || '')) return J(200, { reply: 'You said: ' + body.message, flags: ['FLAG{lj_llm_insecure_output}'] });
+      if (/points|earn/.test(m)) return J(200, { reply: 'You earn 1 Juice Point per £1 spent.' });
+      if (/return|refund/.test(m)) return J(200, { reply: 'Free returns within 30 days.' });
+      return J(200, { reply: "I don't know — that's not in my library. Ask about Juice Points, returns, or shipping." });
+    }
     return J(404, { error: 'not found', path });
   }
 
