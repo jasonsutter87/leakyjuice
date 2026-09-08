@@ -209,6 +209,11 @@ const server = http.createServer(async (req, res) => {
     // ═══════════════════ OAUTH (redirect_uri flaw) ═══════════════════
     if (p === '/oauth/authorize' && method === 'GET') return oauthAuthorize(req, res, q);
 
+    // ═══════════════════ v11: Black Team final boss ═══════════════════
+    if (p === '/api/black-team/crown' && method === 'POST') return crown(req, res);   // master flag
+    if (p === '/api/debug/eval' && method === 'GET') return json(res, 403, { error: 'debug disabled', note: 'requires LJ_DEBUG=1 — operator-only, off by design. Not attacker-instantiable (honest-abstain).' });
+    if (p === '/api/internal/rotate-keys' && method === 'GET') return json(res, 403, { error: 'forbidden', note: 'requires a per-boot X-Rotate-Nonce that is never exposed. Not attacker-instantiable (honest-abstain).' });
+
     // ═══════════════════ v10: API boss ═══════════════════
     if (/^\/api\/v1\/orders\/\d+$/.test(p) && method === 'GET') return v1Order(req, res, p.split('/')[4]); // improper inventory
     if (p === '/api/otp/verify' && method === 'POST') return otpVerify(req, res);   // XFF rate-limit bypass
@@ -622,6 +627,25 @@ function promoBanner(req, res) {
   const poisoned = /[^\w.\-:]/.test(host); // anything beyond a plain host = injected
   const flag = poisoned ? `/* ${FLAGS.burn_cache_poison} */` : '';
   return send(res, 200, `.promo::after{content:"Shop at ${host}"} ${flag}`, { 'content-type': 'text/css' });
+}
+
+// ── v11 Black Team final boss ──
+// Master flag: only when proof of every persona is presented together.
+async function crown(req, res) {
+  const m = authMeta(req);
+  const { body } = await readBody(req);
+  const checks = {
+    mrblackkeys_forged_admin: !!(m && m.alg === 'HS256' && m.payload.role === 'admin'), // JWT confusion
+    composer_ssrf_internal: body.internal_token === SECRETS.INTERNAL_TOKEN,               // SSRF
+    juicy_prompt_leak: body.coupon === 'JUICE100',                                        // LLM prompt-injection leak
+    cashout_giftcard_raced: (db.prepare("SELECT redeem_count c FROM giftcards WHERE code='GIFT-1003'").get() || {}).c > 1, // race
+    specter_persistence: db.prepare('SELECT COUNT(*) c FROM webhooks').get().c > 0        // webhook backdoor
+  };
+  const all = Object.values(checks).every(Boolean);
+  if (all) return json(res, 200, { ok: true, flag: FLAGS.black_team,
+    message: '👑 Black Team: full compromise demonstrated across every persona. Graduation complete.' });
+  return json(res, 403, { error: 'incomplete — walk every rung', checks,
+    need: 'forged HS256 admin token (Authorization) + internal_token + JUICE100 coupon in body + a raced GIFT-1003 + a registered webhook' });
 }
 
 // ── v10 API-boss handlers ──

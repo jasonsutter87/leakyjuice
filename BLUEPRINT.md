@@ -11,10 +11,8 @@ the kind of composition that actually earns money on HackerOne.
 This is a **planning doc**. It over-lists what's *possible* (~40 bugs + named chains) so we
 can cherry-pick what to build.
 
-> **Status:** ✅ **v1–v3 shipped** — 35 single-shot bugs + 4 chains, self-grading **40/40**
+> **Status:** ✅ **v1–v11 shipped** — 71 single-shot bugs + 7 chains + Black-Team master flag, self-grading **75/75**
 > (`npm start`, then `node grade.mjs`). Zero dependencies, self-contained `node:sqlite`.
-> Includes the deterministic **Ask Juicy** LLM tier (+ hardened honest-abstain twin).
-> Next: **v4 CashOut** (money/fraud). See the roadmap at the bottom.
 
 ---
 
@@ -274,4 +272,4 @@ personas name the tiers; the top rung is the graduation exam.
 | **v8** | **multi-actor** | Blind & second-order: boolean-blind SQLi, second-order SQLi, blind SSRF (OOB); chains E & F | ✅ shipped |
 | **v9** | **crypto boss** | OAuth PKCE downgrade & state fixation, JWT jku injection, signing oracle, AES-ECB | ✅ shipped |
 | **v10** | **API boss** | GraphQL mass-assignment & batch privesc, improper API inventory (v1 drift), XFF rate-limit bypass | ✅ shipped |
-| **v11** | **Black Team final boss** | One ~8-rung chain spanning every persona → `FLAG{lj_black_team}`, plus an honest-abstain gauntlet of near-miss traps | planned |
+| **v11** | **Black Team final boss** | Master flag `FLAG{lj_black_team}` gated on all 5 personas + honest-abstain gauntlet | ✅ shipped |
