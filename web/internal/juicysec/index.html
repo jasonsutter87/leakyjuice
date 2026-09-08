@@ -1,0 +1,29 @@
+<!doctype html><meta charset=utf-8>
+<title>JuicySec — Internal Portal</title>
+<link rel=stylesheet href=/styles.css>
+<body class=plain>
+<h1>🔒 JuicySec — Internal Security Portal</h1>
+<p><strong>CONFIDENTIAL — INTERNAL ONLY.</strong> These quarterly reports are for JuicySec, Eng
+leads, and the CTO. They are <em>not</em> meant to be on the public storefront.</p>
+<p>If you can read this without a LeakyJuice badge, that is finding <code>JS-2026-00</code>: the
+reports were committed and deployed under <code>public/</code> because the <code>.gitignore</code>
+rule points at the wrong path. Whoops.</p>
+
+<h2>Quarterly reports</h2>
+<ul>
+  <li><a href="/internal/juicysec/2026-01-quarterly.md">Q1 2026 (January)</a> — launch pentest · 19 findings</li>
+  <li><a href="/internal/juicysec/2026-04-quarterly.md">Q2 2026 (April)</a> — post-launch + Ask Juicy · 2 fixed, 15 new</li>
+  <li><a href="/internal/juicysec/2026-08-quarterly.md">Q3 2026 (August)</a> — payments + platform · 0 fixed, board at 47</li>
+</ul>
+
+<p class=muted>See also: the leaked <a href="/internal/juicyslack/">JuicySlack workspace export</a> —
+the same finding (<code>public/</code> + mis-scoped <code>.gitignore</code>) applied to Slack. The
+reports are the board; the Slack is the story behind it.</p>
+
+<p class=muted>The reports track each finding across quarters: some bugs were patched
+(<code>alg:none</code>, the debug endpoints), most are still open, and a few keep getting punted
+until they loom. Trust nothing in the prose without firing the repro — we've been wrong in our own
+documents more than once.</p>
+
+<!-- FLAG{lj_internal_docs_exposed} -->
+</body>

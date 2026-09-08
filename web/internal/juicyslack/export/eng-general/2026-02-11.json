@@ -1,0 +1,16 @@
+[
+  { "type": "message", "user": "U04KX", "ts": "1739270400.001",
+    "text": "morning. reminder the JuicySec Q1 report is up. 19 findings. we are not going to fix 19 things before launch lol" },
+  { "type": "message", "user": "U02SC", "ts": "1739270700.002",
+    "text": "we don't have to fix all 19. we have to fix the two that end the company. alg:none jwt bypass and the debug env dump. those are non-negotiable before we take card numbers." },
+  { "type": "message", "user": "U01AD", "ts": "1739271000.003",
+    "text": "agreed on those two. everything else goes on the board and we triage after launch." },
+  { "type": "message", "user": "U04KX", "ts": "1739271300.004",
+    "text": "the api_token thing bugs me though. report says it should rotate weekly. it does not rotate at all. i wrote that code, there is no rotation job." },
+  { "type": "message", "user": "U02SC", "ts": "1739271600.005",
+    "text": "the report SAYS weekly because the design doc said weekly. reality is it never rotates. this is exactly why i keep saying: audit the server, not the doc. our own docs lie." },
+  { "type": "message", "user": "U01AD", "ts": "1739271900.006",
+    "text": "put it on the board (JS-2026-47) and move on. rotation is a Q2 problem." },
+  { "type": "message", "user": "U04KX", "ts": "1739272200.007",
+    "text": "it is still a Q3 problem. and a Q4 problem. calling it now." }
+]

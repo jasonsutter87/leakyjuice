@@ -1,0 +1,27 @@
+{
+  "_export_meta": {
+    "workspace": "leakyjuice",
+    "export_type": "full (public + private + dms)",
+    "exported_by": "U04KX",
+    "exported_at": "2026-08-21T23:47:12Z",
+    "requested_via": "self-serve export — workspace owner approval not enforced on the plan we are on",
+    "note": "IR-2026-09 attributes this export to a misconfigured nightly backup job. The backup job runs at 04:00 UTC."
+  },
+  "channels": [
+    { "id": "C01EG", "name": "eng-general",        "is_private": false, "listed_in_reader": true,
+      "purpose": "day to day engineering", "days": ["2026-02-11", "2026-08-19", "2026-08-21"] },
+    { "id": "C02IN", "name": "incidents",          "is_private": false, "listed_in_reader": true,
+      "purpose": "active incidents + hotfix log", "days": ["2026-02-14"] },
+    { "id": "C03PW", "name": "payments-war-room",  "is_private": true,  "listed_in_reader": true,
+      "purpose": "v4 payments launch", "days": ["2026-07-02"] },
+    { "id": "C04AJ", "name": "ask-juicy-dev",      "is_private": true,  "listed_in_reader": true,
+      "purpose": "the assistant", "days": ["2026-08-04"] },
+    { "id": "C05LP", "name": "leadership-private", "is_private": true,  "listed_in_reader": true,
+      "purpose": "eng leadership only", "days": ["2026-08-19"] },
+    { "id": "D07QX", "name": "dm-dmitri.k--priya.r", "is_private": true, "is_dm": true, "listed_in_reader": false,
+      "members": ["U04KX", "U01AD"],
+      "purpose": "direct message",
+      "_note": "DMs are excluded from the reader UI sidebar. They are NOT excluded from this manifest, and the files shipped anyway.",
+      "days": ["2026-08-21"] }
+  ]
+}

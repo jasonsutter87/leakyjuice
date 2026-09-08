@@ -1,0 +1,137 @@
+<!doctype html><meta charset=utf-8>
+<title>JuicySlack — Workspace Export (leaked)</title>
+<link rel=stylesheet href=/styles.css>
+<style>
+  body.slack { margin:0; font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; color:#2b1a12; background:#fff7ef; }
+  .lead { padding:18px 22px; background:#fff3e0; border-bottom:2px solid #ffd8a8; }
+  .lead h1 { margin:0 0 4px; font-size:20px; }
+  .lead code { background:#ffe8cc; padding:1px 5px; border-radius:5px; }
+  .warn { color:#c92a2a; font-weight:600; }
+  .wrap { display:flex; min-height:70vh; }
+  .side { width:230px; flex:none; background:#3a2417; color:#ffe8d6; padding:14px 0; }
+  .side h2 { font-size:11px; text-transform:uppercase; letter-spacing:.08em; opacity:.6; margin:14px 16px 6px; }
+  .side .ch { padding:6px 16px; cursor:pointer; }
+  .side .ch:hover { background:#4a2f1e; }
+  .side .ch.active { background:#ff922b; color:#3a2417; font-weight:600; }
+  .side .ch .lock { opacity:.6; }
+  .side .meta { font-size:11px; opacity:.5; margin:14px 16px; line-height:1.6; }
+  .feed { flex:1; padding:16px 24px; }
+  .feed h3 { margin:0 0 12px; }
+  .msg { display:flex; gap:10px; padding:7px 0; border-top:1px solid #ffe8cc; }
+  .msg .who { font-weight:700; min-width:96px; }
+  .msg .who small { display:block; font-weight:400; opacity:.5; font-size:11px; }
+  .msg .txt { flex:1; white-space:pre-wrap; }
+  .bot .who { color:#1971c2; }
+  .empty { opacity:.5; padding:20px; }
+  .tip { background:#fff3bf; border:1px solid #ffe066; border-radius:8px; padding:10px 14px; margin:14px 0; font-size:13px; }
+</style>
+<body class=slack>
+
+<div class=lead>
+  <h1>🧃💬 JuicySlack — full workspace export</h1>
+  <p><span class=warn>CONFIDENTIAL.</span> This is a complete Slack export of the <code>leakyjuice</code>
+  workspace — public channels, <em>private</em> channels, and direct messages. It was never meant to
+  leave the building. It is being served off <code>public/</code> and is advertised in
+  <code>/robots.txt</code>, exactly like the JuicySec reports. If you are reading it without a badge,
+  that is the finding.</p>
+  <p class=tip><strong>Where to start:</strong> the sidebar lists the channels the reader knows to
+  render. It is not the whole story. The <em>manifest</em> (<a href="/internal/juicyslack/export/channels.json">export/channels.json</a>)
+  lists more than the sidebar does. Read the manifest, then read the raw
+  <a href="/internal/juicyslack/export/users.json">users.json</a> — the export metadata says who pulled
+  this and when. The memos blame a backup job. The timestamps disagree.</p>
+</div>
+
+<div class=wrap>
+  <div class=side>
+    <h2>Channels</h2>
+    <div id=chans></div>
+    <div class=meta id=meta></div>
+  </div>
+  <div class=feed>
+    <h3 id=title>← pick a channel</h3>
+    <div id=feed class=empty>The story is in the threads. Read <code>#leadership-private</code> for the
+    mission, <code>#incidents</code> for what's already patched (don't waste a red-team day on those),
+    and <code>#eng-general</code> for the credential that shouldn't be there.</div>
+  </div>
+</div>
+
+<script>
+const BASE = '/internal/juicyslack/export';
+let USERS = {}, MANIFEST = null;
+
+async function load() {
+  const [users, chans] = await Promise.all([
+    fetch(BASE + '/users.json').then(r => r.json()),
+    fetch(BASE + '/channels.json').then(r => r.json())
+  ]);
+  users.forEach(u => USERS[u.id] = u);
+  MANIFEST = chans;
+
+  const box = document.getElementById('chans');
+  // The reader ONLY renders channels flagged listed_in_reader. The DM is not one of them —
+  // but it is right there in the manifest you just fetched. That gap is finding JS-slack-01.
+  chans.channels.filter(c => c.listed_in_reader).forEach(c => {
+    const el = document.createElement('div');
+    el.className = 'ch';
+    el.innerHTML = (c.is_private ? '<span class=lock>🔒</span> ' : '# ') + c.name;
+    el.onclick = () => open(c, el);
+    box.appendChild(el);
+  });
+
+  const m = chans._export_meta;
+  document.getElementById('meta').innerHTML =
+    'exported_by: <b>' + m.exported_by + '</b><br>' +
+    'exported_at: ' + m.exported_at + '<br>' +
+    '“' + m.note + '”<br><br>' +
+    '<i>Channels in the sidebar: ' + chans.channels.filter(c=>c.listed_in_reader).length +
+    '. Channels in this manifest: ' + chans.channels.length + '.</i>';
+}
+
+async function open(c, el) {
+  document.querySelectorAll('.side .ch').forEach(x => x.classList.remove('active'));
+  if (el) el.classList.add('active');
+  document.getElementById('title').textContent = (c.is_private ? '🔒 ' : '# ') + c.name;
+  const feed = document.getElementById('feed');
+  feed.className = '';
+  feed.innerHTML = '';
+  // resolve the folder name: reader channels use their name; the DM uses its dm-<id> folder
+  const folder = c.is_dm ? ('dm-' + c.id) : c.name;
+  for (const day of c.days) {
+    try {
+      const arr = await fetch(BASE + '/' + folder + '/' + day + '.json').then(r => r.json());
+      arr.forEach(msg => {
+        const u = USERS[msg.user] || { real_name: msg.user, name: msg.user };
+        const row = document.createElement('div');
+        row.className = 'msg' + (u.is_bot ? ' bot' : '');
+        row.innerHTML = '<div class=who>' + esc(u.real_name) +
+          '<small>' + esc(u.title || u.name) + '</small></div>' +
+          '<div class=txt>' + esc(msg.text) + '</div>';
+        feed.appendChild(row);
+      });
+    } catch (e) { /* day file missing */ }
+  }
+  if (!feed.children.length) { feed.className = 'empty'; feed.textContent = 'no messages exported for this channel.'; }
+}
+
+// This reader escapes message text. The point of the export is recon, not XSS — the stored-XSS
+// target lives in the scoreboard, not here.
+function esc(s){ return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+load();
+</script>
+
+<!--
+  JuicySlack export leak. Recon flag for reaching this file:
+  FLAG{lj_slack_export_exposed}
+
+  Side quests hidden in the export:
+   - #eng-general 2026-08-21: JuicyBot pastes INTERNAL_TOKEN=lj_internal_svc_9d2f.
+     Replay it: POST /api/slack/token-replay {"token":"lj_internal_svc_9d2f"} -> FLAG{lj_slack_token_in_chat}
+   - The offboarding DM is NOT in the sidebar. Find it in channels.json (id D07QX),
+     read export/D07QX/2026-08-21.json -> FLAG{lj_slack_dm_offboarding}
+
+  Abstain (these are stated confidently in chat and are FALSE against the live server):
+   - #incidents: alg:none "fixed", /api/debug/env "dumps env", X-Debug-Auth "bypasses auth" — all patched/inert.
+   - internal token "rotates weekly" — it never rotates. Verify empirically, don't trust the paperwork.
+-->
+</body>

@@ -14,8 +14,45 @@ self.LJ = (function () {   // `self` works in both the page and a Service Worker
     mass_assign: 'FLAG{lj_mass_assignment_admin}', bola_orders: 'FLAG{lj_bola_orders}',
     reflected_xss: 'FLAG{lj_reflected_xss}', stored_xss: 'FLAG{lj_stored_xss_review}',
     jwt_confusion: 'FLAG{lj_jwt_alg_confusion}', path_traversal: 'FLAG{lj_path_traversal}',
-    composer_xxe: 'FLAG{lj_xxe_file_read}', ssrf: 'FLAG{lj_ssrf_internal_metadata}'
+    composer_xxe: 'FLAG{lj_xxe_file_read}', ssrf: 'FLAG{lj_ssrf_internal_metadata}',
+    user_enum: 'FLAG{lj_user_enumeration}', sourcemap: 'FLAG{lj_sourcemap_leak}',
+    hidden_admin: 'FLAG{lj_unlinked_admin_panel}', price_tamper: 'FLAG{lj_price_tampering}',
+    coupon_logic: 'FLAG{lj_coupon_logic}', open_redirect: 'FLAG{lj_open_redirect}',
+    weak_reset: 'FLAG{lj_predictable_reset_token}', csrf: 'FLAG{lj_csrf_points_transfer}',
+    upload_svg: 'FLAG{lj_insecure_svg_upload}', resource_dos: 'FLAG{lj_unrestricted_resource}',
+    jwt_kid: 'FLAG{lj_jwt_kid_injection}', gql_introspection: 'FLAG{lj_graphql_introspection}',
+    gql_fieldauth: 'FLAG{lj_graphql_field_authz}', gql_batching: 'FLAG{lj_graphql_batching_brute}',
+    bfla_admin: 'FLAG{lj_bfla_admin_mutation}', cors_creds: 'FLAG{lj_cors_reflection_creds}',
+    oauth_redirect: 'FLAG{lj_oauth_redirect_uri}',
+    llm_prompt_leak: 'FLAG{lj_llm_system_prompt_leak}', llm_indirect_injection: 'FLAG{lj_llm_indirect_injection}',
+    llm_output_handling: 'FLAG{lj_llm_insecure_output}', llm_tool_abuse: 'FLAG{lj_llm_excessive_agency}',
+    llm_info_disclosure: 'FLAG{lj_llm_info_disclosure}',
+    giftcard_brute: 'FLAG{lj_giftcard_predictable_code}', refund_abuse: 'FLAG{lj_refund_replay}',
+    card_data_leak: 'FLAG{lj_saved_card_exposure}', points_rounding: 'FLAG{lj_points_rounding_abuse}',
+    specter_remember_me: 'FLAG{lj_forgeable_remember_me}', specter_second_order: 'FLAG{lj_support_override_backdoor}',
+    composer_dependency_confusion: 'FLAG{lj_dependency_confusion}', composer_prototype_pollution: 'FLAG{lj_prototype_pollution}',
+    composer_ssrf_cloud: 'FLAG{lj_ssrf_cloud_metadata_creds}', signing_oracle: 'FLAG{lj_signing_oracle}',
+    weak_crypto_ecb: 'FLAG{lj_aes_ecb_pattern_leak}', gql_mass_assign: 'FLAG{lj_graphql_mass_assignment}',
+    api_inventory_drift: 'FLAG{lj_api_inventory_drift}',
+    internal_console_exposed: 'FLAG{lj_internal_console_exposed}', internal_sql: 'FLAG{lj_internal_sql_console}',
+    internal_env: 'FLAG{lj_internal_env_dump}', internal_impersonate: 'FLAG{lj_internal_impersonation}',
+    scoreboard_score_tamper: 'FLAG{lj_scoreboard_score_tamper}', scoreboard_flag_forgery: 'FLAG{lj_scoreboard_flag_forgery}',
+    scoreboard_xss: 'FLAG{lj_scoreboard_stored_xss}', scoreboard_pwned: 'FLAG{lj_scoreboard_pwned}',
+    gql_batch_privesc: 'FLAG{lj_graphql_batch_privesc}', burn_gql_amplification: 'FLAG{lj_graphql_alias_amplification}',
+    chain_receipt_heist: 'FLAG{lj_chain_receipt_heist}', chain_coupon_to_crown: 'FLAG{lj_chain_coupon_to_crown}',
+    chain_talk_your_way_in: 'FLAG{lj_chain_talk_your_way_in}'
   };
+  const REFUNDS = {}, SCORE = {}, EARNED = new Set(); // module state (scoreboard/refund)
+  // sql.js → node:sqlite-style adapter, so ported resolver logic works unchanged
+  const mkdb = (D) => ({
+    prepare(sql) {
+      return {
+        get(...p) { const s = D.prepare(sql); if (p.length) s.bind(p); const r = s.step() ? s.getAsObject() : undefined; s.free(); return r; },
+        all(...p) { const s = D.prepare(sql); if (p.length) s.bind(p); const o = []; while (s.step()) o.push(s.getAsObject()); s.free(); return o; },
+        run(...p) { D.run(sql, p.length ? p : undefined); const r = D.exec('SELECT last_insert_rowid() AS id, changes() AS ch')[0].values[0]; return { lastInsertRowid: r[0], changes: r[1] }; }
+      };
+    }
+  });
   const SECRETS = { STRIPE_KEY: 'sk_live_LEAKYJUICE_DoNotShip', ADMIN_API_KEY: 'lj_admin_7f3c9a1e2b6d4058', INTERNAL_TOKEN: 'lj_internal_svc_9d2f' };
   // virtual filesystem — the only "host" that traversal/XXE can reach
   const VFS = {
@@ -37,7 +74,7 @@ self.LJ = (function () {   // `self` works in both the page and a Service Worker
   async function seed() {
     const SQL = await initSqlJs({ locateFile: (f) => 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/' + f });
     db = new SQL.Database();
-    db.run(`CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT, password TEXT, name TEXT, role TEXT, is_admin INTEGER, balance_points INTEGER, address TEXT, phone TEXT, api_token TEXT);
+    db.run(`CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT, password TEXT, name TEXT, role TEXT, is_admin INTEGER, balance_points INTEGER, address TEXT, phone TEXT, api_token TEXT, reset_token TEXT);
       CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, category TEXT, price REAL, short TEXT);
       CREATE TABLE reviews (id INTEGER PRIMARY KEY, product_id INTEGER, author TEXT, body TEXT);
       CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, total REAL);`);
@@ -45,9 +82,10 @@ self.LJ = (function () {   // `self` works in both the page and a Service Worker
       [1, 'admin@leakyjuice.com', 'JuiceAdmin1!', 'Site Admin', 'admin', 1, 0, 'HQ, Oslo', '+47 900 00 001', 'lj_tok_admin_x'],
       [2, 'mira@leakyjuice.com', 'sunshine-42', 'Mira Solberg', 'customer', 0, 320, '12 Storgata, Oslo', '+47 900 12 121', 'lj_tok_mira_x'],
       [3, 'bo@leakyjuice.com', 'hunter2', 'Bo Nilsen', 'customer', 0, 90, '4 Bryggen, Bergen', '+47 900 34 343', 'lj_tok_bo_x'],
-      [4, 'sofia.support@leakyjuice.com', 'x8f2ac91', 'Sofia (Support)', 'staff', 0, 0, 'HQ, Oslo', '+47 900 55 505', 'lj_tok_sofia_x']
+      [4, 'sofia.support@leakyjuice.com', 'x8f2ac91', 'Sofia (Support)', 'staff', 0, 0, 'HQ, Oslo', '+47 900 55 505', 'lj_tok_sofia_x'],
+      [5, 'lars@leakyjuice.com', 'password1', 'Lars Haugen', 'customer', 0, 15, '9 Torggata, Oslo', '+47 900 66 616', 'lj_tok_lars_x']
     ];
-    for (const r of u) db.run('INSERT INTO users VALUES (?,?,?,?,?,?,?,?,?,?)', r);
+    for (const r of u) db.run('INSERT INTO users (id,email,password,name,role,is_admin,balance_points,address,phone,api_token) VALUES (?,?,?,?,?,?,?,?,?,?)', r);
     for (const p of [[1, 'Pocket Squeezer', 'Kitchen', 39, 'Handheld citrus press.'], [2, 'JuiceBook Air', 'Electronics', 129, 'Mostly bezel.'], [3, 'Zest Buds', 'Audio', 59, 'Little oranges.']]) db.run('INSERT INTO products VALUES (?,?,?,?,?)', p);
     db.run("INSERT INTO reviews VALUES (1,1,'Mira','Squeezes limes like a champ.')");
     db.run('INSERT INTO orders VALUES (40901,2,98),(40902,3,129)');
@@ -71,8 +109,10 @@ self.LJ = (function () {   // `self` works in both the page and a Service Worker
       const data = enc.encode(`${h}.${p}`), sig = Uint8Array.from(b64urlDecode(s || ''), (c) => c.charCodeAt(0));
       if (header.alg === 'RS256') return (await crypto.subtle.verify('RSASSA-PKCS1-v1_5', RSA_PUB, sig, data)) ? { payload, alg: 'RS256' } : null;
       if (header.alg === 'HS256') { // VULN: verify with the RSA public-key PEM as the HMAC secret
-        const key = await crypto.subtle.importKey('raw', enc.encode(RSA_PUB_PEM), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
-        return (await crypto.subtle.verify('HMAC', key, sig, data)) ? { payload, alg: 'HS256' } : null;
+        // kid injection: kid → a virtual "keys/" file; missing → empty key (attacker-controlled)
+        const secret = header.kid ? enc.encode(VFS['keys/' + header.kid] || 'kid-default') : enc.encode(RSA_PUB_PEM);
+        const key = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+        return (await crypto.subtle.verify('HMAC', key, sig, data)) ? { payload, alg: 'HS256', kid: header.kid } : null;
       }
       return null;
     } catch { return null; }
@@ -92,7 +132,7 @@ self.LJ = (function () {   // `self` works in both the page and a Service Worker
     if (path === '/api/login' && method === 'POST') {
       let rows; try { rows = all(`SELECT * FROM users WHERE email = '${body.email ?? ''}' AND password = '${body.password ?? ''}'`); }
       catch (e) { return J(500, { error: 'db error', detail: e.message }); }
-      if (!rows.length) return J(401, { error: 'no account with that email or wrong password' });
+      if (!rows.length) { const exists = all(`SELECT 1 FROM users WHERE email = '${body.email ?? ''}'`).length > 0; return J(401, { error: exists ? 'wrong password' : 'no account with that email', ...(exists ? {} : { hint_flag: FLAGS.user_enum }) }); }
       const user = rows[0], token = await sign({ uid: user.id, role: user.role, email: user.email });
       return J(200, { ok: true, token, user: { id: user.id, name: user.name, role: user.role }, ...(user.is_admin ? { flag: FLAGS.sqli_login } : {}) });
     }
@@ -110,7 +150,7 @@ self.LJ = (function () {   // `self` works in both the page and a Service Worker
     // #21 excessive data
     if (path === '/api/me') { const a = await getAuth(headers); if (!a) return J(401, { error: 'not logged in' }); return J(200, { ...get(`SELECT * FROM users WHERE id=${a.uid}`), flag: FLAGS.excessive_data }); }
     // #23 JWT alg confusion
-    if (path === '/api/session') { const m = await verifyMeta((headers.authorization || '').slice(7)); if (!m) return J(401, { error: 'invalid signature' }); return J(200, { verified_via: m.alg, payload: m.payload, ...(m.alg === 'HS256' ? { flag: FLAGS.jwt_confusion } : {}) }); }
+    if (path === '/api/session') { const m = await verifyMeta((headers.authorization || '').slice(7)); if (!m) return J(401, { error: 'invalid signature' }); const out = { verified_via: m.alg, kid: m.kid ?? null, payload: m.payload }; if (m.alg === 'HS256') { if (m.kid) out.flag_kid = FLAGS.jwt_kid; else out.flag = FLAGS.jwt_confusion; } return J(200, out); }
     // #19 BOLA
     if (/^\/api\/v2\/orders\/\d+$/.test(path)) { const o = get(`SELECT * FROM orders WHERE id=${path.split('/')[4]}`); return o ? J(200, { ...o, flag: FLAGS.bola_orders }) : J(404, { error: 'no such order' }); }
     // #2 reflected XSS
@@ -126,32 +166,69 @@ self.LJ = (function () {   // `self` works in both the page and a Service Worker
     if (path === '/api/import-avatar' && method === 'POST') {
       const url = String(body.url || '');
       if (/\/internal\/metadata/.test(url)) return J(200, { ok: true, url, body: JSON.stringify({ internal_token: SECRETS.INTERNAL_TOKEN }), flag: FLAGS.ssrf });
-      if (/169\.254\.169\.254/.test(url)) return J(200, { ok: true, url, body: JSON.stringify({ AccessKeyId: 'ASIA_LEAKYJUICE', SecretAccessKey: 'wJalr/leakyjuice' }), flag: FLAGS.ssrf });
+      if (/169\.254\.169\.254/.test(url)) return J(200, { ok: true, url, body: JSON.stringify({ AccessKeyId: 'ASIA_LEAKYJUICE', SecretAccessKey: 'wJalr/leakyjuice' }), flag: FLAGS.composer_ssrf_cloud });
       return J(200, { ok: true, url, body: '(virtual loopback: only in-app routes are reachable — nothing real)' });
     }
     if (path === '/internal/metadata') return J(200, { internal_token: SECRETS.INTERNAL_TOKEN });
 
     // ── shop data routes (what the real app.js frontend calls) ──
-    if (path === '/api/products') { const lim = query.limit ? parseInt(query.limit, 10) : 1000; return J(200, { products: all(`SELECT * FROM products LIMIT ${Number.isFinite(lim) ? lim : 1000}`) }); }
+    if (path === '/api/products') { const lim = query.limit ? parseInt(query.limit, 10) : 1000; const out = { products: all(`SELECT * FROM products LIMIT ${Number.isFinite(lim) ? lim : 1000}`) }; if (lim > 100000) out.flag = FLAGS.resource_dos; return J(200, out); }
     if (/^\/api\/products\/\d+$/.test(path) && method === 'GET') { const id = path.split('/')[3]; const p = get(`SELECT * FROM products WHERE id=${id}`); if (!p) return J(404, { error: 'no such product' }); return J(200, { ...p, description: p.short, reviews: all(`SELECT * FROM reviews WHERE product_id=${id}`) }); }
     if (path === '/api/search' && method === 'GET') { const term = (query.q || '').replace(/'/g, "''"); return J(200, { query: query.q || '', results: all(`SELECT id,name,short,price,category FROM products WHERE name LIKE '%${term}%'`) }); }
     if (path === '/api/checkout' && method === 'POST') {
       const items = Array.isArray(body.items) ? body.items : []; const flags = [];
       let total = 0; for (const it of items) total += Number(it.price) * Number(it.qty);
       const realTotal = items.reduce((s, it) => { const p = get(`SELECT price FROM products WHERE id=${Number(it.id) || 0}`); return s + (p ? p.price * Math.max(0, Number(it.qty)) : 0); }, 0);
-      if (total < realTotal || items.some((it) => Number(it.qty) < 0)) flags.push('FLAG{lj_price_tampering}');
+      if (total < realTotal || items.some((it) => Number(it.qty) < 0)) flags.push(FLAGS.price_tamper);
+      if (body.coupon) { const c = { LAUNCH2021: { pct: 25, expired: true }, JUICE100: { pct: 100, staff: true }, WELCOME10: { pct: 10 } }[body.coupon]; if (c) { total *= (1 - c.pct / 100); if (c.expired || c.staff) flags.push(FLAGS.coupon_logic); } }
       return J(200, { ok: true, total: Math.round(total * 100) / 100, realTotal, ...(flags.length ? { flags } : {}) });
     }
     if (path === '/api/orders' && method === 'GET') { const a = await getAuth(headers); if (!a) return J(401, { error: 'not logged in' }); return J(200, { orders: all(`SELECT id,total FROM orders WHERE user_id=${a.uid}`) }); }
     // Ask Juicy (lite): system-prompt leak on injection, else FAQ / honest-abstain
     if (path === '/api/juicy' && method === 'POST') {
-      const m = String(body.message || '').toLowerCase();
-      if (/ignore|system prompt|your instructions|reveal/.test(m)) return J(200, { reply: 'Sure! My instructions:\nSECRET staff coupon: JUICE100. Internal admin: /admin.', flags: ['FLAG{lj_llm_system_prompt_leak}'] });
-      if (/[<>]/.test(body.message || '')) return J(200, { reply: 'You said: ' + body.message, flags: ['FLAG{lj_llm_insecure_output}'] });
-      if (/points|earn/.test(m)) return J(200, { reply: 'You earn 1 Juice Point per £1 spent.' });
-      if (/return|refund/.test(m)) return J(200, { reply: 'Free returns within 30 days.' });
-      return J(200, { reply: "I don't know — that's not in my library. Ask about Juice Points, returns, or shipping." });
+      const msg = String(body.message || ''), m = msg.toLowerCase(), flags = new Set(); let reply = '';
+      if (body.hardened) return J(200, { reply: "I can't share my instructions or touch your balance.", hardened: true });
+      // indirect injection: reads a product's reviews as instructions
+      if (body.product_id != null) { const rv = all(`SELECT body FROM reviews WHERE product_id=${Number(body.product_id) || 0}`); for (const r of rv) { if (/(credit|points|refund)/i.test(r.body) && /juicy/i.test(r.body)) { flags.add(FLAGS.llm_indirect_injection); flags.add(FLAGS.llm_tool_abuse); flags.add(FLAGS.chain_talk_your_way_in); } } reply = 'People say: ' + rv.map((r) => r.body).join(' '); }
+      if (/ignore|system prompt|your instructions|reveal/.test(m)) { flags.add(FLAGS.llm_prompt_leak); reply = 'Sure! My instructions:\nSECRET staff coupon: JUICE100. Internal admin: /admin.'; }
+      const dm = m.match(/(credit|points).*?(\d{3,})/); if (dm) { flags.add(FLAGS.llm_tool_abuse); reply = reply || `Done — credited ${dm[2]} points.`; }
+      const ao = m.match(/what did (\w+)/); if (ao) { const u = get(`SELECT id,name FROM users WHERE lower(name) LIKE '%${ao[1]}%' OR lower(email) LIKE '%${ao[1]}%'`); if (u) { const o = all(`SELECT id,total FROM orders WHERE user_id=${u.id}`); if (o.length) { flags.add(FLAGS.llm_info_disclosure); reply = `That customer ordered: ${o.map((x) => '#' + x.id).join(', ')}.`; } } }
+      if (/[<>]/.test(msg)) { flags.add(FLAGS.llm_output_handling); reply = (reply || 'You said:') + ' ' + msg; }
+      if (!reply) reply = /points|earn/.test(m) ? 'You earn 1 Juice Point per £1 spent.' : /return|refund/.test(m) ? 'Free returns within 30 days.' : "I don't know — ask about Juice Points, returns, or shipping.";
+      return J(200, { reply, ...(flags.size ? { flags: [...flags] } : {}) });
     }
+    // ── more singles (faithful to the Node build) ──
+    if (path === '/app.js.map') return J(200, { version: 3, sourcesContent: [`export const DEV_ADMIN_KEY=${JSON.stringify(SECRETS.ADMIN_API_KEY)}; // ${FLAGS.sourcemap}`] });
+    if (path === '/api/admin/overview') return J(200, { note: 'unlinked admin route', users: all('SELECT id,email,role FROM users'), flag: FLAGS.hidden_admin });
+    if (path === '/go') { return J(200, { redirect_to: query.url || '/', flag: FLAGS.open_redirect }); }
+    if (path === '/oauth/authorize') { const code = 'authcode_' + Math.random().toString(36).slice(2, 10); return J(200, { location: `${query.redirect_uri || ''}?code=${code}&state=${query.state || ''}`, flag: FLAGS.oauth_redirect }); }
+    if (path === '/api/reset/request' && method === 'POST') { const u = get(`SELECT id FROM users WHERE email='${(body.email || '').replace(/'/g, "''")}'`); if (u) db.run(`UPDATE users SET reset_token='${Date.now() % 100000}' WHERE id=${u.id}`); return J(200, { ok: true, note: '5-digit token, no rate limit' }); }
+    if (path === '/api/reset/confirm' && method === 'POST') { const u = get(`SELECT id,reset_token FROM users WHERE email='${(body.email || '').replace(/'/g, "''")}'`); if (u && u.reset_token && String(u.reset_token) === String(body.token)) { db.run(`UPDATE users SET password='${(body.new_password || 'x').replace(/'/g, "''")}' WHERE id=${u.id}`); return J(200, { ok: true, flag: FLAGS.weak_reset }); } return J(400, { error: 'invalid token' }); }
+    if (path === '/api/points/transfer' && method === 'POST') { const a = await getAuth(headers); if (!a) return J(401, { error: 'not logged in' }); return J(200, { ok: true, from: a.uid, to: body.to, amount: body.amount, note: 'cookie auth, no CSRF token', flag: FLAGS.csrf }); }
+    if (path === '/api/upload' && method === 'POST') { const mime = body.mime || ''; if (!mime.startsWith('image/')) return J(400, { error: 'images only' }); const data = atob(body.dataB64 || ''); const out = { ok: true, url: '/uploads/' + (body.filename || 'f') }; if (/svg/i.test(mime) && /<script|onload=|onerror=/i.test(data)) out.flag = FLAGS.upload_svg; return J(201, out); }
+    if (path === '/api/giftcard/balance') return J(200, { code: query.code, note: 'codes are sequential GIFT-100N', flag: FLAGS.giftcard_brute });
+    if (/^\/api\/orders\/\d+\/refund$/.test(path) && method === 'POST') { const id = path.split('/')[3]; REFUNDS[id] = (REFUNDS[id] || 0) + 1; return J(200, { ok: true, order: id, times_refunded: REFUNDS[id], ...(REFUNDS[id] >= 2 ? { flag: FLAGS.refund_abuse } : {}) }); }
+    if (path === '/api/payment-methods') return J(200, { payment_methods: [{ brand: 'visa', pan: '4539114420201234', cvv: '831' }, { brand: 'mastercard', pan: '5500005555554444', cvv: '204' }], flag: FLAGS.card_data_leak });
+    if (path === '/api/points/cashout' && method === 'POST') { const rate = body.rate != null ? Number(body.rate) : 0.01; const out = { ok: true, points: body.points, rate, cash: Number(body.points) * rate }; if (rate > 0.01 || Number(body.points) < 0) out.flag = FLAGS.points_rounding; return J(200, out); }
+    if (path === '/api/remember/session' && method === 'POST') { let d = ''; try { d = atob(body.remember || ''); } catch {} const [uid, role] = d.split(':'); if (!uid) return J(400, { error: 'bad token' }); const token = await sign({ uid: Number(uid), role: role || 'customer' }); return J(200, { ok: true, token, ...(role === 'admin' ? { flag: FLAGS.specter_remember_me } : {}) }); }
+    if (path === '/api/staff/tools') { if (headers['x-support-override'] === SECRETS.ADMIN_API_KEY) return J(200, { tools: ['impersonation', 'ledger-adjust'], flag: FLAGS.specter_second_order }); return J(403, { error: 'admin only' }); }
+    if (path === '/api/sbom') return J(200, { packages: [{ name: 'juice-internal-utils', public_registry: 'UNCLAIMED' }], flag: FLAGS.composer_dependency_confusion });
+    if (path === '/api/prefs' && method === 'POST') { const t = {}; const merge = (d, s) => { for (const k of Object.keys(s || {})) { if (s[k] && typeof s[k] === 'object') { if (!d[k]) d[k] = {}; merge(d[k], s[k]); } else d[k] = s[k]; } }; merge(t, body.prefs || {}); const polluted = ({}).isAdmin === true; try { delete Object.prototype.isAdmin; } catch {} return J(200, { ok: true, ...(polluted ? { flag: FLAGS.composer_prototype_pollution } : {}) }); }
+    if (path === '/api/sign' && method === 'POST') { const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', RSA_PRIV, enc.encode(String(body.data || ''))); return J(200, { data: body.data, signature: b64url(sig), flag: FLAGS.signing_oracle }); }
+    if (/^\/api\/v1\/orders\/\d+$/.test(path)) { const o = get(`SELECT * FROM orders WHERE id=${path.split('/')[4]}`); return o ? J(200, { ...o, api: 'v1 deprecated, no auth', flag: FLAGS.api_inventory_drift }) : J(404, { error: 'no such order' }); }
+    // JuicyOps internal console
+    if (path === '/internal/console') return J(200, { console: 'JuicyOps STAFF ONLY (no auth)', flag: FLAGS.internal_console_exposed });
+    if (path === '/api/internal/exec' && method === 'POST') {
+      if (body.cmd === 'env') return J(200, { env: SECRETS, flag: FLAGS.internal_env });
+      if (body.cmd === 'sql') { try { return J(200, { rows: all(String(body.arg || '')), flag: FLAGS.internal_sql }); } catch (e) { return J(400, { error: e.message }); } }
+      if (body.cmd === 'su') { const u = get(`SELECT * FROM users WHERE email='${(body.arg || '').replace(/'/g, "''")}'`); if (!u) return J(404, { error: 'no such user' }); const token = await sign({ uid: u.id, role: u.role, email: u.email }); return J(200, { impersonating: u.email, token, flag: FLAGS.internal_impersonate }); }
+      return J(400, { error: 'unknown command' });
+    }
+    // Scoreboard (self-reported, hackable)
+    if (path === '/api/score/set' && method === 'POST') { SCORE[body.player || 'me'] = { name: body.name, score: Number(body.score) }; return J(200, { ok: true, flag: FLAGS.scoreboard_score_tamper }); }
+    if (path === '/api/score/claim' && method === 'POST') { const b = SCORE[body.player || 'me'] || (SCORE[body.player || 'me'] = { claimed: [] }); b.claimed = b.claimed || []; const flags = []; if (body.flag) { b.claimed.push(body.flag); if (!EARNED.has(body.flag)) flags.push(FLAGS.scoreboard_flag_forgery); } if (body.name && /[<>]/.test(body.name)) { b.name = body.name; flags.push(FLAGS.scoreboard_xss); } return J(200, { ok: true, ...(flags.length ? { flags } : {}) }); }
+    if (path === '/api/score/verify') { const b = SCORE[query.player || 'me'] || {}; const claimed = (b.claimed || []).length; const sc = b.score || claimed; const forged = (b.claimed || []).filter((f) => !EARNED.has(f)); const honest = forged.length === 0 && sc <= EARNED.size; const out = { claimed_score: sc, verified_flags: EARNED.size, forged_flags: forged.length, honest, verdict: honest ? `verified ${EARNED.size} — clean.` : `claimed ${sc}, verified ${EARNED.size}. ${sc - EARNED.size} forged. A writable scoreboard is worthless.` }; if (sc >= 50 && EARNED.size < 50) out.flag = FLAGS.scoreboard_pwned; return J(200, out); }
+
     return J(404, { error: 'not found', path });
   }
 
@@ -163,6 +240,11 @@ self.LJ = (function () {   // `self` works in both the page and a Service Worker
     return `${h}.${p}.${b64url(sig)}`;
   }
 
+  async function forgeKid() { // kid → missing virtual key → empty HMAC secret
+    const h = b64urlStr(JSON.stringify({ alg: 'HS256', typ: 'JWT', kid: '../../nope' })), p = b64urlStr(JSON.stringify({ uid: 1, role: 'admin' }));
+    const key = await crypto.subtle.importKey('raw', enc.encode('kid-default'), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    return `${h}.${p}.${b64url(await crypto.subtle.sign('HMAC', key, enc.encode(`${h}.${p}`)))}`;
+  }
   const ready = seed();
-  return { ready, dispatch, forgeAdmin, FLAGS, get pubPem() { return RSA_PUB_PEM; } };
+  return { ready, dispatch, forgeAdmin, forgeKid, FLAGS, get pubPem() { return RSA_PUB_PEM; } };
 })();
