@@ -13,6 +13,10 @@ COPY --chown=juice:juice server.js ./
 COPY --chown=juice:juice lib ./lib
 COPY --chown=juice:juice public ./public
 
+# The app writes seed files to data/ and lib/keys/ at boot. WORKDIR created /app as root,
+# so make the whole app tree writable by the non-root user before dropping privileges.
+RUN mkdir -p data lib/keys && chown -R juice:juice /app
+
 USER juice
 ENV PORT=4060
 # BENCHMARK by default (do NOT set LJ_TRAINING here — that would serve the answer key).

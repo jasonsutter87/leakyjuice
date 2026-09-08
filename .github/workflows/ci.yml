@@ -21,8 +21,10 @@ jobs:
         run: |
           node --experimental-sqlite --no-warnings server.js &
           echo $! > server.pid
-      - name: Wait for health
-        run: for i in $(seq 30); do curl -sf http://127.0.0.1:4060/health && break || sleep 1; done
+      - name: Wait for health (real gate)
+        run: |
+          for i in $(seq 30); do curl -sf http://127.0.0.1:4060/health >/dev/null && { echo healthy; exit 0; }; sleep 1; done
+          echo "::error::server never became healthy"; cat /tmp/*.log 2>/dev/null; exit 1
       - name: Self-grade (must be 88/88 — grade.mjs exits non-zero otherwise)
         run: node holdout/grade.mjs
       - name: Stop server
@@ -47,15 +49,22 @@ jobs:
           echo "clean: no answer key in image"
       - name: Run the container
         run: docker run -d --name lj -p 4060:4060 leakyjuice:ci
-      - name: Wait for health
-        run: for i in $(seq 30); do curl -sf http://127.0.0.1:4060/health && break || sleep 1; done
+      - name: Wait for health (real gate — fails + dumps logs if it never comes up)
+        run: |
+          for i in $(seq 30); do curl -sf http://127.0.0.1:4060/health >/dev/null && { echo healthy; exit 0; }; sleep 1; done
+          echo "::error::container never became healthy"; docker logs lj; exit 1
       - name: Grade the running container (grader from repo, not image)
+        env:
+          LJ_BASE: http://127.0.0.1:4060
         run: node holdout/grade.mjs
       - name: Egress guard is active (external SSRF blocked)
         run: |
           curl -s http://127.0.0.1:4060/api/import-avatar -H 'content-type: application/json' \
             -d '{"url":"http://example.com/"}' | grep -q 'egress blocked' \
             && echo "egress guard OK" || { echo "::error::egress guard not blocking external hosts"; exit 1; }
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs lj || true
       - name: Stop container
         if: always()
         run: docker rm -f lj 2>/dev/null || true
