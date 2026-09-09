@@ -1,8 +1,0 @@
-# Netlify config for the client-side (WASM) build. Static, root-served — the app's
-# absolute /api paths + the Service Worker (scope '/') work with no changes.
-[build]
-  publish = "web"
-[[headers]]
-  for = "/sw.js"
-  [headers.values]
-    Cache-Control = "no-cache"
