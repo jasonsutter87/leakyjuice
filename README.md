@@ -58,3 +58,7 @@ Best experienced on desktop (the terminal is a big overlay).
 ---
 
 *Built as a training range for [werbos](https://werbos.netlify.app) — a small owned LLM that grounds every answer and honestly abstains rather than hallucinate. LeakyJuice teaches it (and you) the one instinct that matters in security: don't trust the story, fire the repro.*
+
+## License
+
+MIT © 2026 Jason Sutter — see [LICENSE](LICENSE). The code is MIT; the vulnerabilities are on purpose.
