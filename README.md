@@ -2,7 +2,7 @@
 
 **A deliberately-vulnerable web shop you can hack live in your browser — and you can't hurt anyone, because there's no server.** SQL injection, JWT forgery, an LLM you prompt-inject, and multi-step exploit chains — all running 100% client-side via WebAssembly. Each visitor gets their own sandbox.
 
-### 👉 [Try it live](https://leakyjuice-js.netlify.app) &nbsp;·&nbsp; hit **`` ` ``** (backtick) for the hacker terminal
+### 👉 [Try it live](https://leakyjuice.com) &nbsp;·&nbsp; hit **`` ` ``** (backtick) for the hacker terminal
 
 ![LeakyJuice — a cute gadget shop with a hidden hacker terminal](docs/hero.jpg)
 
@@ -27,7 +27,7 @@ The twist: there's a version that runs **entirely in your browser**. The whole "
 
 ## Play it
 
-**In your browser (no install):** just open **[the live demo](https://leakyjuice-js.netlify.app)** and press `` ` ``.
+**In your browser (no install):** just open **[the live demo](https://leakyjuice.com)** and press `` ` ``.
 
 **Run the full server yourself** (zero dependencies — Node 22.5+ built-ins only, no `npm install`):
 
