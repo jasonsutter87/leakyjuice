@@ -1,0 +1,11 @@
+# Defense-in-depth headers for the shell page (per Mr-BlackKeys' black-box review).
+# These harden the wrapper — the challenges are meant to stay hackable.
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  # CSP is scoped to exactly what the WASM build needs: sql.js from cdnjs (script+wasm+
+  # the .wasm fetch), Google Fonts, the Service Worker, inline boot scripts, data: imgs.
+  # ⚠️ SMOKE-TEST after deploy: open the live site — if the shop/self-check stops loading
+  # (WASM blocked), delete the Content-Security-Policy line below and redeploy.
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://cdnjs.cloudflare.com; worker-src 'self'; img-src 'self' data:; frame-ancestors 'none'
