@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LeakyJuice — Build & Host</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+  body.plain{max-width:760px} pre{background:#0e1116;color:#c8d3e0;padding:14px 16px;border-radius:12px;overflow:auto;font-size:13px;line-height:1.5}
+  h2{margin-top:1.4em} .note{background:#fff1df;border:1px dashed var(--orange);border-radius:12px;padding:12px 14px;margin:14px 0}
+  table{margin:12px 0} td,th{vertical-align:top}
+</style>
+</head>
+<body class="plain">
+  <p><a href="/">← back to the shop</a></p>
+  <h1>Build &amp; host LeakyJuice 🧃</h1>
+  <p class="muted">One vulnerable engine, two front doors. Everything's on GitHub —
+  <a href="https://github.com/jasonsutter87/leakyjuice" target="_blank" rel="noopener">github.com/jasonsutter87/leakyjuice</a>.</p>
+
+  <table>
+    <tr><th></th><th>Node server</th><th>Browser / WASM</th></tr>
+    <tr><td><b>Runs</b></td><td>a real HTTP server</td><td>100% in the browser (Service Worker + WASM)</td></tr>
+    <tr><td><b>Use for</b></td><td>self-hosting a CTF · AI-agent benchmarking</td><td>a safe, free, zero-setup public demo</td></tr>
+    <tr><td><b>Public?</b></td><td>only on a throwaway, isolated box</td><td>safe to share — sandboxed per visitor</td></tr>
+  </table>
+
+  <h2>Option A — run the full server (local)</h2>
+  <p class="muted">Zero dependencies. Needs Node 22.5+ (for built-in <code>node:sqlite</code>). No <code>npm install</code>.</p>
+  <pre>git clone https://github.com/jasonsutter87/leakyjuice
+cd leakyjuice
+
+# BENCHMARK mode (black-box — no answer key served)
+node --experimental-sqlite --no-warnings server.js
+
+# TRAINING mode (turns on the hacker terminal + in-app hints)
+LJ_TRAINING=1 node --experimental-sqlite --no-warnings server.js
+# → http://localhost:4060
+
+# grade it (fires every exploit)
+node holdout/grade.mjs        # expect 88/88</pre>
+
+  <h2>Option B — host the browser build (static, safe to make public)</h2>
+  <p class="muted">The <code>web/</code> folder is a plain static site. The whole "server" — SQLite (WASM),
+  a JWT signer (WebCrypto), an LLM, a virtual filesystem — runs client-side in a Service Worker.
+  Deploy it to any static host. This is what you're looking at right now.</p>
+  <pre># from the wasm-port branch:
+netlify deploy --dir=web --prod          # Netlify (root-served — recommended)
+
+# or literally any static server:
+cd web &amp;&amp; python3 -m http.server 4070   # then open http://localhost:4070</pre>
+  <p class="muted">Needs a root-served origin (the app + Service Worker use absolute <code>/api</code> paths),
+  so Netlify / a subdomain / a user Pages site work best; a project Pages subpath needs base-path tweaks.</p>
+
+  <h2>How the WASM trick works</h2>
+  <p class="muted"><code>web/sw.js</code> is a Service Worker that <code>importScripts</code> the engine + sql.js,
+  and intercepts the app's <code>fetch('/api/...')</code> calls — answering them from the in-browser engine.
+  So the SQL injection is real (raw concat into SQLite-WASM), the JWT algorithm-confusion is real
+  (WebCrypto), the SSRF/XXE hit a <em>virtual</em> filesystem — but nothing escapes the tab.
+  No backend, no network egress, each visitor fully sandboxed.</p>
+
+  <div class="note">
+    <b>⚠️ Safety.</b> The <b>browser build is safe to host publicly</b> — no server, no real data, no egress.
+    The <b>Node server is a genuinely vulnerable app</b> (plaintext passwords, leaked secrets, injectable
+    everywhere) — host it only on a dedicated throwaway box, egress-restricted, in benchmark mode. See
+    <a href="https://github.com/jasonsutter87/leakyjuice/blob/main/DEPLOY.md" target="_blank" rel="noopener">DEPLOY.md</a>.
+    And <b>never deploy the answer key</b> (<code>holdout/</code>) — it's git-quarantined so the target stays an
+    honest black-box.
+  </div>
+
+  <p><a href="/">← back to the shop</a> · <a href="selfcheck.html">self-check</a> ·
+  <a href="https://github.com/jasonsutter87/leakyjuice" target="_blank" rel="noopener">⭐ the repo</a></p>
+</body>
+</html>
