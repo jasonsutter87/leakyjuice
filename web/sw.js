@@ -2,9 +2,14 @@
 // engine, intercepts the app's API calls, and answers them from the in-browser engine.
 // The real frontend (app.js, hack.js) fetches /api/... exactly as before — it just never
 // leaves the browser. No backend, no network egress, each visitor fully sandboxed.
+//
+// ENGINE_VERSION doubles as (1) a cache-buster on the imported engine so a redeploy is
+// actually fetched fresh, and (2) a byte-change in this file so the browser re-installs the
+// SW and re-imports it. Bump it on every engine/gql change you ship.
+const ENGINE_VERSION = '2026-09-09-2';
 importScripts(
   'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js',
-  './engine.js', './gql.js'  // engine + graphql; defines self.LJ = { ready, dispatch, ... }
+  './engine.js?v=' + ENGINE_VERSION, './gql.js?v=' + ENGINE_VERSION  // engine + graphql; defines self.LJ = { ready, dispatch, ... }
 );
 
 self.addEventListener('install', () => self.skipWaiting());
